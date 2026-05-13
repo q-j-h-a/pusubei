@@ -1,22 +1,15 @@
-# Web 界面结构图
+# Web UI 结构说明
 
-本文说明当前 Web 界面的层级结构、三栏布局、右侧控制面板、图表 Grid 和主要数据流。
+本文档记录当前项目的页面结构、右侧控制面板、图表卡片和自主实验交互规则。入口文件为 `templates/index.html`，主要前端逻辑位于 `static/js/`。
 
-## 1. 总体布局
-
-页面骨架定义在 `templates/index.html`。
+## 1. 整体布局
 
 ```text
 body
 └─ .app
    ├─ header.topbar
    │  ├─ .brand
-   │  │  ├─ .logo
-   │  │  └─ 标题 + 副标题
    │  └─ .top-actions.hidden-top
-   │     ├─ #topFeature
-   │     └─ #jumpExperiment
-   │
    └─ .shell
       ├─ aside.sidebar
       ├─ .splitter.splitter-left
@@ -26,7 +19,7 @@ body
          └─ #rightPanel
 ```
 
-三栏默认使用 CSS 变量：
+默认宽度变量：
 
 ```text
 --sidebar-width: 16%;
@@ -34,21 +27,17 @@ body
 --assistant-width: 20%;
 ```
 
-`.splitter-left` 和 `.splitter-right` 由 `static/js/app_shell.js` 绑定拖拽，用于调整左右栏和中间栏宽度。宽度比例保存在 `localStorage`。
-
-理论页会给 `.shell` 加 `.theory`，隐藏右栏和右侧 splitter。
+左右栏拖拽由 `static/js/app_shell.js` 处理，宽度写入 `localStorage`。切换页面时，`setPage(page)` 会更新左侧导航、主内容区和右侧面板，并触发图表 resize。
 
 ## 2. 左侧导航
 
-左侧导航由 `templates/index.html` 静态写入：
-
 ```text
 aside.sidebar
-├─ details.nav-section 理论部分
+├─ 理论部分
 │  ├─ 实验基本信息
 │  ├─ 实验目的
 │  ├─ 前置知识
-│  ├─ details.nested-section 模型介绍
+│  ├─ 模型介绍
 │  │  ├─ 数据集
 │  │  ├─ 训练模型
 │  │  ├─ 学习准则
@@ -56,31 +45,26 @@ aside.sidebar
 │  │  └─ 评价指标
 │  ├─ 预期成果
 │  └─ 思考拓展
-│
-└─ details.nav-section 实验部分
+└─ 实验部分
    ├─ 数据预处理
    ├─ 模型训练与评估
    ├─ 模型预测
    └─ 自主实验
 ```
 
-导航点击绑定在 `static/js/app_shell.js`：
+导航按钮点击后调用：
 
 ```text
 button.nav-btn click -> setPage(btn.dataset.page)
 ```
 
-`setPage(page)` 是异步流程，会先等待页面 shell 和右侧面板渲染完成，再应用三栏宽度和图表 resize，避免首次进入实验页时右侧面板宽度为 0。
+## 3. 主内容区
 
-## 3. 中间内容区
-
-中间区域是：
+主内容挂载点：
 
 ```text
 main.main#main
 ```
-
-它本身为空，具体内容由页面 JS 动态写入。
 
 ### 3.1 理论页
 
@@ -94,7 +78,7 @@ main.main#main
       └─ iframe
 ```
 
-理论 HTML 片段从 `static/theory-html/<page>.html` 加载。
+理论 HTML 位于 `static/theory-html/<page>.html`。
 
 ### 3.2 数据预处理页
 
@@ -127,18 +111,21 @@ renderDataShell()
 └─ section.hero-card
    ├─ .hero-line
    └─ .chart-grid#chartGrid
-      ├─ 模型训练
-      ├─ 学习准则
+      ├─ 模型训练图
+      ├─ 学习准则图
       ├─ Loss 等高线图
       ├─ Loss 三维曲面图
       ├─ 梯度下降图
-      ├─ 参数轨迹
-      ├─ 指标图
+      ├─ w 参数轨迹
+      ├─ b 参数轨迹
+      ├─ RMSE
+      ├─ MAE
+      ├─ R2
       ├─ 本轮计算过程
-      └─ 参数表
+      └─ 每轮参数表
 ```
 
-默认显示前两个图：`模型训练`、`学习准则`。
+RMSE、MAE、R2 使用同一套训练页仪表盘样式。
 
 ### 3.4 模型预测页
 
@@ -149,11 +136,16 @@ renderDataShell()
 └─ section.hero-card
    ├─ .hero-line
    └─ .chart-grid#chartGrid
-      ├─ 预测输入与结果
-      ├─ 本轮计算过程
       ├─ 预测可视化
+      ├─ 预测计算过程
+      ├─ 预测输入与结果
       └─ 相近样本对比
 ```
+
+当前主要使用 `预测可视化` 和 `预测计算过程` 两张图。预测支持：
+
+- 原始特征输入：先按训练数据的 mean/std 转为模型输入，再代入模型。
+- 标准化特征输入：直接代入模型，同时反推对应原始特征值用于可视化。
 
 ### 3.5 自主实验页
 
@@ -168,7 +160,7 @@ renderDataShell()
       └─ .chart-grid#studentChartGrid
 ```
 
-自主实验右侧面板按 4 个阶段组织：
+自主实验主内容按当前阶段渲染：
 
 ```text
 01 数据集
@@ -179,14 +171,14 @@ renderDataShell()
 
 ## 4. 右侧控制面板
 
-右侧容器：
+右侧挂载点：
 
 ```text
 aside.assistant
 └─ #rightPanel
 ```
 
-控制面板渲染器在 `static/js/control_renderers.js`。
+右侧面板由 `static/js/control_renderers.js` 生成。
 
 ### 4.1 数据预处理
 
@@ -196,8 +188,9 @@ aside.assistant
    ├─ .mini-stats
    ├─ .control-group 特征选择
    │  └─ select#dataFeature
-   └─ .control-group 显示模式
-      └─ details.mode-menu
+   ├─ .control-group 显示模式
+   │  └─ details.mode-menu input[name=dataViews]
+   └─ 预处理 / 看图按钮
 ```
 
 ### 4.2 模型训练与评估
@@ -206,18 +199,18 @@ aside.assistant
 #rightPanel
 └─ .control-card
    ├─ .mini-stats
-   ├─ .control-group 数据设置
+   ├─ .control-group 训练数据版本
    │  ├─ select#trainStd
    │  └─ select#trainFeature
-   ├─ .control-group 显示内容
+   ├─ .control-group 训练图表
    │  └─ details.mode-menu input[name=trainViews]
    ├─ .control-group 初始参数
    │  ├─ input#w0
    │  └─ input#b0
    ├─ .control-group 训练控制
-   │  ├─ input#lr[type=range] + 微调按钮
-   │  ├─ input#epochs[type=range] + 微调按钮
-   │  └─ input#speed[type=range] + 微调按钮
+   │  ├─ input#lr[type=range]
+   │  ├─ input#epochs[type=range]
+   │  └─ input#speed[type=range]
    ├─ .button-grid
    └─ .runtime
 ```
@@ -227,11 +220,12 @@ aside.assistant
 ```text
 #rightPanel
 └─ .control-card
-   ├─ .mini-stats
-   ├─ .control-group 数据设置
+   ├─ .mini-stats / 当前模型信息
+   ├─ .control-group 数据版本与特征选择
    │  ├─ select#predictStd
    │  └─ select#predictFeature
-   ├─ .control-group 输入特征值
+   ├─ .control-group 输入
+   │  ├─ select#predictInputMode
    │  └─ input#predictInput
    ├─ .control-group 显示模式
    │  └─ details.mode-menu input[name=predictViews]
@@ -242,16 +236,23 @@ aside.assistant
 
 自主实验使用定制面板 `studentPanelHtml()`，阶段外层使用 `.control-card.student-stage-card`，阶段内使用 `.control-group` 分区。
 
-当前版本约束与交互：
+当前规则：
 
-- `02 字段设置` 已删除，不再单独配置目标列与特征列。
+- `01 数据集` 支持上传 CSV 或加载内置数据集。
 - CSV 最后一列固定作为目标列 `y`，且不参与标准化。
 - 其余数值列作为特征列，预处理后生成 `特征名_standardized`。
 - `02 数据预处理` 支持原始散点图、预处理散点图、单特征线性相关系数、全特征线性相关系数。
-- `03 模型训练与评估` 中，训练数据版本默认选 `标准化特征`。
-- `03 模型训练与评估` 的状态徽标在初始和重置后为 `未训练`，训练一轮和自动训练后为 `已训练`。
-- `参数表` 为训练区表格图表的新标题，默认布局为 `1 行 x 4 列`。
-- `评估标准图` 当前为 3 个同一行仪表盘，同时显示 RMSE、MAE、R2。
+- `03 模型训练与评估` 中，训练数据版本默认选择 `标准化特征`。
+- `03 模型训练与评估` 的状态徽标在初始和重置后为 `未训练`，训练一轮或自动训练后为 `已训练`。
+- `评估标准图` 是 3 个横向布置的仪表盘，样式与模型训练与评估页的 RMSE、MAE、R2 仪表盘保持一致。
+- `04 模型预测` 默认展开，右侧状态徽标初始为 `待预测`，预测成功后变为 `已预测`。
+- `04 模型预测` 右侧内容依次为当前模型、输入类型、输入特征值、显示图表、准备预测、开始预测。
+- 自主实验预测默认展示 `预测可视化` 和 `预测计算过程` 两张图，与模型预测页保持一致。
+- 点击准备预测时，如果尚未训练，会提示先完成 `03 模型训练与评估`；如果已训练，则先展示默认两张预测图。
+- 点击开始预测时，会使用当前训练帧的 `w`、`b`、`epoch`，并根据输入类型完成原始特征/标准化特征转换和预测计算。
+- 自主实验的 `预测计算过程` 与模型预测页使用同一套展示逻辑。
+
+右侧结构：
 
 ```text
 01 数据集
@@ -264,15 +265,19 @@ aside.assistant
 └─ 预处理 / 看图
 
 03 模型训练与评估
-├─ 训练数据版本（默认：标准化特征）
-├─ 训练状态徽标（未训练 / 已训练）
+├─ 训练数据版本
+├─ 训练状态徽标
 ├─ 训练图表
 ├─ 初始参数
 └─ 训练控制
 
 04 模型预测
-├─ 预测输入值
-└─ 显示图表
+├─ 当前模型
+├─ 输入类型
+├─ 输入特征值
+├─ 显示图表
+├─ 准备预测
+└─ 开始预测
 ```
 
 ## 5. 图表卡片与交互
@@ -296,7 +301,7 @@ GridStack 包装层：
       └─ section.chart-card
 ```
 
-GridStack 使用：
+GridStack 初始化：
 
 ```text
 GridStack.init({
@@ -310,16 +315,7 @@ GridStack.init({
 })
 ```
 
-图表交互规则在 `static/js/state_runtime.js`：
-
-- 默认未激活：滚轮、悬停 tooltip、图内拖动不影响图表。
-- 点击图表卡片：激活并高亮。
-- 激活后：允许滚轮缩放、hover tooltip、图内拖动。
-- 点击同一图表：取消激活。
-- 点击页面其它位置：取消激活。
-- 图表卡片右下角保留自定义视觉角标，原生 `resize` 已关闭。
-
-布局保存 key：
+布局存储 key：
 
 ```text
 preprocess -> preprocessGridLayoutV4
@@ -328,68 +324,58 @@ predict    -> predictGridLayoutV1
 student    -> studentGridLayoutV1
 ```
 
+自主实验预测显示模式存储 key：
+
+```text
+studentPredictSelectedViewsV2
+```
+
 ## 6. 数据流
 
 ```text
-用户操作右侧面板
-        ↓
-页面 JS 收集控件值
-        ↓
-runAction(action, payload)
-        ↓
-POST /api/run_action
-        ↓
-models/simple_linear_regression/model.py
-        ↓
-返回 context_id / history / prediction / preview
-        ↓
-页面 JS 根据 views 请求图表数据
-        ↓
-POST /api/chart_data
-        ↓
-models/simple_linear_regression/charts/*
-        ↓
-chart_renderers.js 生成 ECharts option
-        ↓
-ECharts 渲染到 .chart#chart_xxx
+右侧控制面板
+  -> 页面 JS 读取表单
+  -> runAction(action, payload)
+  -> POST /api/run_action
+  -> models/simple_linear_regression/model.py
+  -> 返回 context_id / history / prediction / preview
+  -> 页面 JS 根据 views 请求图表数据
+  -> POST /api/chart_data
+  -> models/simple_linear_regression/charts/*
+  -> chart_renderers.js 生成 ECharts option
+  -> ECharts 渲染到 .chart#chart_xxx
 ```
 
-## 7. 文件职责速查
+## 7. 关键文件职责
 
 ```text
 templates/index.html
-  页面骨架、CSS、左侧导航、三栏容器、右侧面板基础样式、脚本引用
+  页面骨架、基础 CSS、左右侧栏、主内容区和右侧控制面板挂载点
 
 static/js/app_shell.js
-  页面切换、导航点击、三栏拖拽宽度、窗口 resize
+  页面切换、导航状态、左右栏拖拽、全局 resize
 
 static/js/state_runtime.js
-  全局状态、图表实例、GridStack 状态、选择项保存恢复、图表点击激活
+  GridStack 初始化、布局存储、视图选择存储、图表 resize
 
 static/js/control_renderers.js
-  右侧控制面板控件生成
+  右侧控制面板渲染
 
 static/js/view_renderers.js
-  中间内容区卡片、表格、计算过程 HTML 生成
+  主内容区图表卡片、表格、计算过程 HTML 渲染
 
 static/js/chart_renderers.js
-  ECharts option 生成
-
-static/js/preprocess_page.js
-  数据预处理页
-
-static/js/train_page.js
-  模型训练与评估页
-
-static/js/predict_page.js
-  模型预测页
+  ECharts option 渲染
 
 static/js/student_page.js
-  自主实验页
+  自主实验 4 阶段流程、训练帧切换、预测准备与预测执行
 
-models/simple_linear_regression/controls/*.py
-  右侧控制面板 schema
+models/simple_linear_regression/model.py
+  后端 action 入口、训练、预测、自主实验数据处理
 
-models/simple_linear_regression/charts/*
-  图表 metadata 和 chart data
+models/simple_linear_regression/controls/student.py
+  自主实验右侧控制 schema
+
+models/simple_linear_regression/charts/student/
+  自主实验各图表数据构造
 ```

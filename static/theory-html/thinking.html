@@ -11,7 +11,8 @@
                 inlineMath: [['$', '$'], ['\\(', '\\)']],
                 displayMath: [['$$', '$$'], ['\\[', '\\]']]
             },
-            svg: { fontCache: 'global' }
+            svg: { fontCache: 'global' },
+            chtml: { displayAlign: 'left' }
         };
     </script>
     <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -36,11 +37,11 @@
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
             background-color: transparent; 
             color: var(--text-body); 
-            padding: 40px 60px; 
+            padding: 24px 32px;
             text-align: left;
         }
         
-        .content-container { max-width: 960px; margin-left: 0; }
+        .content-container { width: 100%; }
         
         h1 { font-size: 28px; font-weight: 700; color: var(--text-main); margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;}
         h2 { font-size: 20px; font-weight: 600; color: var(--text-main); margin: 40px 0 16px; display: flex; align-items: center;}
@@ -48,9 +49,9 @@
         h3 { font-size: 16px; font-weight: 600; color: var(--text-main); margin: 24px 0 12px; }
         p { font-size: 15px; line-height: 1.8; margin-bottom: 16px; text-align: justify; }
         
-        .chart-wrapper { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; margin: 24px 0; max-width: 850px; }
+        .chart-wrapper { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; margin: 24px 0; max-width: 860px; }
         
-        .math-display { padding: 16px 20px; font-size: 1.1em; color: var(--text-main); background-color: #f8fafc; border-radius: 6px; margin: 16px 0; overflow-x: auto; text-align: center; border: 1px solid #e2e8f0; }
+        .math-display { padding: 8px 0; font-size: 0.875em; color: var(--text-main); margin: 12px 0; overflow-x: auto; text-align: left; width: fit-content; min-width: 35%; max-width: 90%; }
         
         .academic-highlight { background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 20px 0; font-size: 14.5px; color: #1e3a8a; line-height: 1.6; border-radius: 0 4px 4px 0; }
         .academic-warning { background-color: #f8fafc; border-left: 4px solid #64748b; padding: 16px; margin: 20px 0; font-size: 14.5px; color: #334155; line-height: 1.6; border-radius: 0 4px 4px 0; }
@@ -90,7 +91,7 @@
 
         <h2>3. 穿越时空的数据集：时代的局限</h2>
         <div class="academic-warning">
-            <strong>⚠️ 数据探索的盲区：著名的 50k 截断问题 (Censored Data)</strong><br>
+            <strong>数据的盲区：著名的 50k 截断问题 (Censored Data)</strong><br>
             波士顿房价数据集采集于 1978 年。如果你在做数据探索（EDA）时仔细观察过真实房价的直方图，你会发现：房价在刚好达到 $50,000 的地方，出现了一个异常突起的尖峰。<br>
             这不是因为刚好有那么多价值 5 万美元的房子，而是因为当年在统计时，<strong>凡是超过 5 万美元的房子，都被强制记录为了 5 万美元</strong>。这种数据在统计学上称为“截断数据（Censored Data）”。如果不把这些异常的 5 万美元样本剔除，你的线性回归曲线将会被严重地往下拉扯！
         </div>
@@ -118,10 +119,7 @@ print(f"RMSE: {np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
 print(f"R^2 Score: {r2_score(y_test, y_pred):.4f}")
 </code></pre>
 
-        <div class="academic-highlight">
-            <strong>🌟 恭喜结课！</strong><br>
-            你不仅掌握了线性回归的底层代码实现，更建立起了数据科学家应有的批判性思维。接下来，你可以尝试在实验平台上调整学习率、加入正则化，或者挑战更复杂的房价预测数据集（如 Kaggle 的 Ames Housing Dataset）。
-        </div>
+     
 
     </div>
 

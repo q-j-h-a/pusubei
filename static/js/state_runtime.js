@@ -243,7 +243,7 @@ function persistActiveViewSelection() {
     persistStudentFormState();
     if (document.querySelector('input[name="studentDataViews"]')) saveCheckedValues("studentDataViews", "studentDataSelectedViewsV1");
     if (document.querySelector('input[name="studentTrainViews"]')) saveCheckedValues("studentTrainViews", "studentTrainSelectedViewsV1");
-    if (document.querySelector('input[name="studentPredictViews"]')) saveCheckedValues("studentPredictViews", "studentPredictSelectedViewsV1");
+    if (document.querySelector('input[name="studentPredictViews"]')) saveCheckedValues("studentPredictViews", "studentPredictSelectedViewsV2");
   }
 }
 

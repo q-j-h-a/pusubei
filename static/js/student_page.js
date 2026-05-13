@@ -92,7 +92,7 @@ function renderStudentPanel() {
   applyStudentSchemaPanelParts(standardizedReady);
   restoreCheckedValues("studentDataViews", "studentDataSelectedViewsV1");
   restoreCheckedValues("studentTrainViews", "studentTrainSelectedViewsV1");
-  restoreCheckedValues("studentPredictViews", "studentPredictSelectedViewsV1");
+  restoreCheckedValues("studentPredictViews", "studentPredictSelectedViewsV2");
   $("studentUploadBtn").addEventListener("click", uploadStudentDataset);
   if (!studentMeta) return;
   restoreStudentFormState();
@@ -171,7 +171,7 @@ function renderStudentPanel() {
     if (studentTrainData) renderStudentTrainFrame(studentCurrentFrame);
   }));
   document.querySelectorAll('input[name="studentPredictViews"]').forEach(el => el.addEventListener("change", () => {
-    saveCheckedValues("studentPredictViews", "studentPredictSelectedViewsV1");
+    saveCheckedValues("studentPredictViews", "studentPredictSelectedViewsV2");
     if (studentPredictData) renderStudentPredictDashboard();
   }));
 }
@@ -303,6 +303,7 @@ function markStudentTrainingDirty() {
   if (!studentTrainData) return;
   studentTrainDirty = true;
   stopAuto();
+  refreshStudentPredictModelStatus();
   showStudentMessage("训练参数已修改，请重新点击“准备训练”生成新的训练过程。");
 }
 
@@ -311,6 +312,46 @@ function refreshStudentTrainStatus() {
   if (!el) return;
   el.textContent = studentHasTrained ? "\u5df2\u8bad\u7ec3" : "\u672a\u8bad\u7ec3";
   el.className = `section-status ${studentHasTrained ? "ready" : ""}`;
+}
+
+function refreshStudentPredictStatus() {
+  const el = $("studentPredictStatus");
+  if (!el) return;
+  el.textContent = studentPredictData ? "已预测" : "待预测";
+  el.className = `section-status ${studentPredictData ? "ready" : ""}`;
+}
+
+function refreshStudentPredictModelStatus() {
+  const el = $("studentPredictModelStatus");
+  const input = $("studentPredictInput");
+  const mode = $("studentPredictInputMode");
+  if (!el) return;
+  const frame = studentTrainData?.history?.[studentCurrentFrame] || studentTrainData?.history?.[studentTrainData.history.length - 1] || null;
+  const ready = Boolean(studentTrainData && !studentTrainDirty && frame);
+  if (!ready) {
+    el.innerHTML = `<div class="model-status-empty">暂无训练模型。请先在“03 模型训练与评估”中准备训练，再切换到希望用于预测的 epoch。</div>`;
+    if (input) input.disabled = true;
+    if (mode) mode.disabled = true;
+    return;
+  }
+  if (input) input.disabled = false;
+  if (mode) {
+    mode.disabled = false;
+    [...mode.options].forEach(option => {
+      option.disabled = option.value === "standardized" && !studentTrainData.use_standardized;
+    });
+    if (!studentTrainData.use_standardized && mode.value === "standardized") mode.value = "raw";
+  }
+  el.innerHTML = `
+    <div class="model-status-grid">
+      <div class="model-status-main"><span>来源</span><strong>自主实验 epoch ${escapeHtml(frame.epoch)}</strong></div>
+      <div class="model-status-pair"><span>特征</span><strong>${escapeHtml(studentTrainData.feature || studentCurrentFeatureValue())}</strong></div>
+      <div class="model-status-pair"><span>输入空间</span><strong>${escapeHtml(studentTrainData.use_standardized ? "标准化特征" : "原始特征")}</strong></div>
+      <div class="model-param-row">
+        <div><span>w</span><strong>${Number(frame.w).toFixed(6)}</strong></div>
+        <div><span>b</span><strong>${Number(frame.b).toFixed(6)}</strong></div>
+      </div>
+    </div>`;
 }
 
 function studentSelectedFeatures() {
@@ -556,6 +597,7 @@ async function renderStudentTrainFrame(index) {
   refreshStudentStageStrip();
   if ($("studentEpochNow")) $("studentEpochNow").textContent = frame.epoch;
   if ($("studentLossNow")) $("studentLossNow").textContent = Number(frame.loss).toFixed(4);
+  refreshStudentPredictModelStatus();
   const views = selectedValues("studentTrainViews");
   const displayViews = expandStudentTrainViews(views);
   if ($("studentTrainModeSummary")) $("studentTrainModeSummary").textContent = views.length ? `已选择 ${views.length} 项` : "请选择训练图表";
@@ -604,11 +646,19 @@ function startStudentAuto() {
 }
 
 function prepareStudentPredictionView() {
+  if (!studentTrainData || studentTrainDirty) {
+    studentPredictData = null;
+    studentStage = "模型预测";
+    studentStageKind = "predict";
+    refreshStudentStageStrip();
+    showStudentMessage("请先在“03 模型训练与评估”中完成准备训练，再回到这里使用当前模型预测。", true);
+    return;
+  }
   studentStage = "模型预测";
   studentStageKind = "predict";
   refreshStudentStageStrip();
   const views = selectedValues("studentPredictViews");
-  renderStudentGrid(views.length ? views : ["result", "chart"], view => {
+  renderStudentGrid(views.length ? views : ["chart", "calc"], view => {
     if (view === "chart") return chartCardHtml("student_predict_chart", "预测可视化", "点击“开始预测”后显示预测点和回归线", "wide");
     if (view === "calc") return `<section class="chart-card wide"><div class="chart-head"><div><div class="chart-title">预测计算过程</div><div class="chart-sub">等待预测输入</div></div></div><div style="padding:18px"><div class="empty-state">点击“开始预测”后显示计算过程。</div></div></section>`;
     if (view === "nearby") return `<section class="chart-card wide"><div class="chart-head"><div><div class="chart-title">相近样本对比</div><div class="chart-sub">等待预测输入</div></div></div><div style="padding:18px"><div class="empty-state">点击“开始预测”后显示相近样本。</div></div></section>`;
@@ -618,20 +668,35 @@ function prepareStudentPredictionView() {
 
 async function loadStudentPrediction() {
   try {
+    if (!studentTrainData || studentTrainDirty) {
+      studentPredictData = null;
+      studentStage = "模型预测";
+      studentStageKind = "predict";
+      refreshStudentStageStrip();
+      showStudentMessage("请先在“03 模型训练与评估”中完成准备训练，再回到这里使用当前模型预测。", true);
+      return;
+    }
     studentStage = "模型预测";
     studentStageKind = "predict";
     const payload = studentPayload({
-      value: Number($("studentPredictInput").value || 0)
+      value: Number($("studentPredictInput").value || 0),
+      input_mode: $("studentPredictInputMode")?.value || "raw"
     });
     const frame = currentStudentTrainFrame(payload);
+    if (!frame) {
+      showStudentMessage("当前预测设置和已准备的训练模型不一致，请重新准备训练后再预测。", true);
+      return;
+    }
     if (frame) {
       payload.w = frame.w;
       payload.b = frame.b;
+      payload.epoch = frame.epoch;
     }
     studentPredictData = await runAction("student_predict", payload);
     studentMeta.target = payload.target;
     studentMeta.features = payload.features;
     refreshStudentStageStrip();
+    refreshStudentPredictStatus();
     renderStudentPredictDashboard();
   } catch (err) {
     renderStudentWorkspace(err.message);
@@ -640,15 +705,16 @@ async function loadStudentPrediction() {
 
 async function renderStudentPredictDashboard() {
   const views = selectedValues("studentPredictViews");
-  if ($("studentPredictModeSummary")) $("studentPredictModeSummary").textContent = views.length ? `已选择 ${views.length} 项` : "请选择预测图表";
+  const displayViews = views.length ? views : ["chart", "calc"];
+  if ($("studentPredictModeSummary")) $("studentPredictModeSummary").textContent = displayViews.length ? `已选择 ${displayViews.length} 项` : "请选择预测图表";
   try {
-    studentChartDataCache = await loadStudentChartData(studentPredictData, views);
+    studentChartDataCache = await loadStudentChartData(studentPredictData, displayViews);
   } catch (err) {
     studentChartDataCache = {};
     console.warn("student predict chart_data fallback:", err);
   }
-  renderStudentGrid(views, view => studentChartDataCache[view] ? studentViewHtml(view, studentChartDataCache[view]) : studentPredictViewHtml(view));
-  views.forEach(view => {
+  renderStudentGrid(displayViews, view => studentChartDataCache[view] ? studentViewHtml(view, studentChartDataCache[view]) : studentPredictViewHtml(view));
+  displayViews.forEach(view => {
     if (view !== "chart") return;
     setChartOptionWhenReady(
       initChart(studentChartDataCache[view] ? "chart_student_chart" : "chart_student_predict_chart"),
@@ -719,9 +785,9 @@ function defaultStudentGridLayout(view) {
     rmse_gauge: { x: 2, y: 2, w: 1, h: 1 },
     mae_gauge: { x: 3, y: 2, w: 1, h: 1 },
     r2_gauge: { x: 2, y: 3, w: 1, h: 1 },
-    calc: { x: 0, y: 4, w: 4, h: 3 },
+    calc: { x: 0, y: 2, w: 4, h: 3 },
     result: { x: 0, y: 0, w: 1, h: 1 },
-    chart: { x: 1, y: 0, w: 3, h: 2 },
+    chart: { x: 0, y: 0, w: 4, h: 2 },
     nearby: { x: 0, y: 2, w: 2, h: 2 }
   })[view] || { x: 0, y: 0, w: 2, h: 2 };
 }

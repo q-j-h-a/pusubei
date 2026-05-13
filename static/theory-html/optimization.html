@@ -8,7 +8,8 @@
     <script>
         window.MathJax = {
             tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
-            svg: { fontCache: 'global' }
+            svg: { fontCache: 'global' },
+            chtml: { displayAlign: 'left' }
         };
     </script>
     <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -35,8 +36,7 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background-color: transparent; 
             color: var(--text-body); 
-            padding: 40px 60px; 
-            max-width: 960px; 
+            padding: 24px 32px;
             text-align: left;
         }
         
@@ -47,7 +47,7 @@
         p { font-size: 15px; line-height: 1.8; margin-bottom: 16px; text-align: justify; }
         
         /* 紧凑公式块：解决公式间距过大的问题 */
-        .math-display { padding: 12px 0; font-size: 1.2em; color: var(--text-main); margin: 8px 0; overflow-x: auto; text-align: center; }
+        .math-display { padding: 8px 0; font-size: 0.875em; color: var(--text-main); margin: 8px 0; overflow-x: auto; text-align: left; width: fit-content; min-width: 35%; max-width: 90%; }
         .math-display.group { padding-bottom: 24px; }
         .math-display p { margin-bottom: 4px; }
         
@@ -58,14 +58,14 @@
         /* 补充说明提示块 */
         .academic-note { background-color: #f1f5f9; border-left: 4px solid #94a3b8; padding: 16px; margin: 20px 0; font-size: 14.5px; color: #475569; line-height: 1.6; border-radius: 0 4px 4px 0; }
 
-        .chart-wrapper { margin: 40px 0; max-width: 750px; }
+        .chart-wrapper { margin: 40px 0; max-width: 720px; }
         pre { margin: 24px 0; padding: 20px; background-color: #f8fafc; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; overflow-x: auto; border: 1px solid var(--border-color);}
     </style>
 </head>
 <body>
 
     <div>
-        <h1>优化算法：解析法与数值迭代法的博弈</h1>
+        <h1>核心算法：解析法与数值迭代法的博弈</h1>
         
         <p>在机器学习中，当我们定义好了模型 $f(x) = wx + b$ 和衡量误差的“尺子”——均方误差（MSE）后，接下来的核心挑战就是：如何找到那组最完美的斜率 $w$ 和截距 $b$，使得误差函数的取值达到全球最低？这在数学上被称为<strong>最优参数求解</strong>。针对波士顿房价预测这类线性任务，数学界提供了两条截然不同的思维路径。</p>
 
@@ -103,7 +103,7 @@ def ordinary_least_squares(x, y):
 </code></pre>
 
         <div class="academic-note">
-            <strong>学术延伸：解析解的代价</strong><br>
+            <strong>延伸：解析解的代价</strong><br>
             最小二乘法虽然精准且快速，但它在处理超大规模数据时会面临严重的算力瓶颈。当特征维度 $d$ 变得极高时，公式中涉及的矩阵求逆运算，其计算复杂度会呈立方级（$O(d^3)$）爆炸增长。这正是为什么我们需要引入更具普适性的数值解法。
         </div>
 

@@ -723,10 +723,16 @@ def student_predict(payload: dict) -> dict:
     feature = payload.get("feature")
     features = payload.get("features") or [feature]
     value = safe_float(payload.get("value"), 0.0)
+    input_mode = payload.get("input_mode", "raw")
+    if input_mode not in {"raw", "standardized"}:
+        raise ValueError("输入类型必须是 raw 或 standardized。")
     use_standardized = bool(payload.get("use_standardized", True))
     raw = clean_numeric_df(data["raw"], features + [target])
     std = data.get("std")
     x_col = student_std_col(feature) if use_standardized else feature
+
+    if input_mode == "standardized" and not use_standardized:
+        raise ValueError("当前模型使用原始特征训练，预测输入不能选择标准化特征。")
 
     if use_standardized:
         if std is None or x_col not in std.columns:
@@ -735,22 +741,31 @@ def student_predict(payload: dict) -> dict:
         sigma = float(raw[feature].std(ddof=0))
         if sigma == 0:
             raise ValueError(f"特征 {feature} 的标准差为 0，无法预测。")
-        model_x = (value - mean) / sigma
+        if input_mode == "standardized":
+            model_x = value
+            raw_value = value * sigma + mean
+        else:
+            raw_value = value
+            model_x = (value - mean) / sigma
         df_train = clean_numeric_df(std, [x_col, target])
     else:
         mean = None
         sigma = None
+        raw_value = value
         model_x = value
         df_train = raw
 
     x = df_train[x_col].astype(float).to_numpy()
     y = df_train[target].astype(float).to_numpy()
-    w, b = np.polyfit(x, y, 1)
+    w = safe_float(payload.get("w"), None)
+    b = safe_float(payload.get("b"), None)
+    if w is None or b is None:
+        w, b = np.polyfit(x, y, 1)
     pred = float(w * model_x + b)
     line_x = np.linspace(float(np.min(x)), float(np.max(x)), 160)
     line_y = w * line_x + b
     raw_x = raw[feature].astype(float).to_numpy()
-    distances = np.abs(raw_x - value)
+    distances = np.abs(raw_x - raw_value)
     nearest_idx = np.argsort(distances)[:5]
     nearby = [{
         "index": int(idx),
@@ -764,7 +779,9 @@ def student_predict(payload: dict) -> dict:
         "description": "",
         "target": target,
         "x_column": x_col,
-        "raw_value": value,
+        "raw_value": float(raw_value),
+        "input_value": value,
+        "input_mode": input_mode,
         "model_x": float(model_x),
         "use_standardized": use_standardized,
         "mean": mean,
@@ -774,7 +791,19 @@ def student_predict(payload: dict) -> dict:
         "prediction": pred,
         "scatter": {"x": np.round(x, 6).tolist(), "y": np.round(y, 6).tolist()},
         "line": {"x": np.round(line_x, 6).tolist(), "y": np.round(line_y, 6).tolist()},
-        "predict_point": {"x": float(model_x), "y": pred, "raw_x": value},
+        "model_state": {
+            "source": "student_current",
+            "source_label": f"自主实验 epoch {payload.get('epoch', '--')}",
+            "feature": feature,
+            "target": target,
+            "x_column": x_col,
+            "use_standardized": use_standardized,
+            "w": float(w),
+            "b": float(b),
+            "epoch": payload.get("epoch"),
+        },
+        "model_source": f"自主实验 epoch {payload.get('epoch', '--')}",
+        "predict_point": {"x": float(model_x), "y": pred, "raw_x": float(raw_value)},
         "nearby": nearby,
         "summary": series_summary(pd.Series(x), pd.Series(y)),
     }

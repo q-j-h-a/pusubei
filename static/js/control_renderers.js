@@ -318,6 +318,19 @@ function studentPanelHtml() {
   const datasetStatus = studentMeta ? "已加载" : "未加载";
   const preprocessStatus = standardizedReady ? (studentData ? "已预处理" : "标准化可用") : (studentData ? "已查看原始" : (studentMeta ? "待执行" : "未就绪"));
   const trainStatus = studentHasTrained ? "\u5df2\u8bad\u7ec3" : "\u672a\u8bad\u7ec3";
+  const predictFrame = studentTrainData?.history?.[studentCurrentFrame] || studentTrainData?.history?.[studentTrainData.history.length - 1] || null;
+  const predictModelReady = Boolean(studentTrainData && !studentTrainDirty && predictFrame);
+  const predictInputSpace = studentTrainData?.use_standardized ? "标准化特征" : "原始特征";
+  const predictModelStatusHtml = predictModelReady ? `
+        <div class="model-status-grid">
+          <div class="model-status-main"><span>来源</span><strong>自主实验 epoch ${escapeHtml(predictFrame.epoch)}</strong></div>
+          <div class="model-status-pair"><span>特征</span><strong>${escapeHtml(studentTrainData.feature || studentCurrentFeatureValue())}</strong></div>
+          <div class="model-status-pair"><span>输入空间</span><strong>${escapeHtml(predictInputSpace)}</strong></div>
+          <div class="model-param-row">
+            <div><span>w</span><strong>${Number(predictFrame.w).toFixed(6)}</strong></div>
+            <div><span>b</span><strong>${Number(predictFrame.b).toFixed(6)}</strong></div>
+          </div>
+        </div>` : `<div class="model-status-empty">暂无训练模型。请先在“03 模型训练与评估”中准备训练，再切换到希望用于预测的 epoch。</div>`;
   const predictStatus = studentPredictData ? "已预测" : "待预测";
   return `
     <div class="right-title">${escapeHtml(studentPanelTitle())}</div>
@@ -431,11 +444,24 @@ function studentPanelHtml() {
         <div><span>当前 Loss</span><strong id="studentLossNow">--</strong></div>
       </div>
     </details>
-    <details class="control-card student-stage-card">
-      <summary><h3>04 模型预测</h3><span class="section-status ${studentPredictData ? "ready" : ""}">${predictStatus}</span></summary>
+    <details class="control-card student-stage-card" open>
+      <summary><h3>04 模型预测</h3><span id="studentPredictStatus" class="section-status ${studentPredictData ? "ready" : ""}">${predictStatus}</span></summary>
       <div class="control-group" aria-label="预测输入值">
-        <label class="control-label" for="studentPredictInput">预测输入值</label>
-        <input id="studentPredictInput" type="number" value="0" step="0.1">
+        <label class="control-label">当前模型</label>
+        <div id="studentPredictModelStatus">${predictModelStatusHtml}</div>
+      </div>
+      <div class="control-group" aria-label="预测输入">
+        <div class="field-grid">
+          <label class="control-label" for="studentPredictInputMode">输入类型
+            <select id="studentPredictInputMode" ${predictModelReady ? "" : "disabled"}>
+              <option value="raw">原始特征</option>
+              <option value="standardized" ${studentTrainData?.use_standardized ? "" : "disabled"}>标准化特征</option>
+            </select>
+          </label>
+          <label class="control-label" for="studentPredictInput">输入特征值
+            <input id="studentPredictInput" type="number" value="0" step="0.1" ${predictModelReady ? "" : "disabled"}>
+          </label>
+        </div>
       </div>
       <div class="control-group" aria-label="显示图表">
         <label class="control-label">显示图表</label>

@@ -179,15 +179,19 @@ function studentMetricsOption(chartData = null) {
   const frame = chartData?.frame || studentTrainData?.history?.[studentCurrentFrame] || {};
   const metrics = chartData?.metrics || {};
   const history = studentTrainData?.history || [];
+  const rowsForMetric = key => {
+    const rows = metrics[key]?.data?.map(([epoch, value]) => ({ epoch, [key]: value })) || [];
+    return rows.length ? rows : (history.length ? history : [frame].filter(row => row && Object.keys(row).length));
+  };
   const rmse = metrics.rmse?.value ?? frame.rmse ?? 0;
   const mae = metrics.mae?.value ?? frame.mae ?? 0;
   const r2 = metrics.r2?.value ?? frame.r2 ?? 0;
   return {
     tooltip: { formatter: p => `${p.seriesName}<br>${Number(p.value).toFixed(4)}` },
     series: [
-      studentGaugeSeries("RMSE", rmse, 0, metrics.rmse?.max || Math.max(...history.map(r => r.rmse), 1), ["17%", "48%"], "#5b35f5"),
-      studentGaugeSeries("MAE", mae, 0, metrics.mae?.max || Math.max(...history.map(r => r.mae), 1), ["50%", "48%"], "#c47a11"),
-      studentGaugeSeries("R²", Math.max(-1, Math.min(1, r2)), -1, 1, ["83%", "48%"], "#0f9f78")
+      studentMetricGaugeSeries("rmse", rmse, rowsForMetric("rmse"), ["17%", "54%"]),
+      studentMetricGaugeSeries("mae", mae, rowsForMetric("mae"), ["50%", "54%"]),
+      studentMetricGaugeSeries("r2", r2, rowsForMetric("r2"), ["83%", "54%"])
     ]
   };
 }
@@ -218,26 +222,75 @@ function studentSingleGaugeOption(name, value, max, color) {
 }
 
 function studentGaugeSeries(name, value, min, max, center, color) {
+  const isR2 = min < 0 && max === 1;
+  const current = isR2 ? (studentTrainData?.history?.[studentCurrentFrame]?.r2 ?? value) : value;
+  const gaugeColor = isR2 ? "#d9354f" : color;
   return {
     name,
     type: "gauge",
     min,
     max,
-    center,
-    radius: "88%",
+    center: isR2 ? [center[0], "54%"] : center,
+    radius: "76%",
     startAngle: 205,
     endAngle: -25,
-    splitNumber: 4,
-    progress: { show: true, width: 10, itemStyle: { color } },
-    axisLine: { lineStyle: { width: 10, color: [[1, "#eef2f7"]] } },
-    axisTick: { show: false },
-    splitLine: { length: 6, lineStyle: { color: "#cbd5e1", width: 1 } },
-    axisLabel: { distance: 12, fontSize: 9, color: "#6b7280" },
-    pointer: { width: 3, length: "48%", itemStyle: { color } },
-    anchor: { show: true, size: 5, itemStyle: { color } },
-    title: { offsetCenter: [0, "54%"], fontSize: 13, fontWeight: 900, color: "#111827" },
-    detail: { valueAnimation: true, formatter: v => Number(v).toFixed(name === "R²" ? 3 : 2), offsetCenter: [0, "76%"], fontSize: 18, fontWeight: 900, color: "#111827" },
+    splitNumber: 5,
+    progress: { show: true, width: 12, itemStyle: { color: gaugeColor } },
+    axisLine: { lineStyle: { width: 12, color: [[1, "#e8ecf4"]] } },
+    axisTick: { distance: -18, length: 4, lineStyle: { color: "#8b95a5", width: 1 } },
+    splitLine: { distance: -20, length: 8, lineStyle: { color: "#8b95a5", width: 1.2 } },
+    axisLabel: { distance: -7, color: "#6b7280", fontSize: 9 },
+    pointer: { length: "58%", width: 4, itemStyle: { color: "#172033" } },
+    anchor: { show: true, size: 7, itemStyle: { color: "#172033" } },
+    title: { offsetCenter: [0, "56%"], fontSize: 11, fontWeight: 800, color: "#6b7280" },
+    detail: { valueAnimation: true, formatter: () => Number(current).toFixed(2), offsetCenter: [0, "34%"], fontSize: 22, fontWeight: 900, color: "#172033" },
     data: [{ value, name }]
+  };
+}
+
+function studentMetricGaugeSeries(key, current, rows, center) {
+  const config = metricGaugeConfig(key, rows);
+  return {
+    name: config.label,
+    type: "gauge",
+    center,
+    radius: "76%",
+    startAngle: 205,
+    endAngle: -25,
+    min: config.min,
+    max: config.max,
+    splitNumber: 5,
+    progress: {
+      show: true,
+      width: 12,
+      itemStyle: { color: config.color }
+    },
+    axisLine: {
+      lineStyle: {
+        width: 12,
+        color: [[1, "#e8ecf4"]]
+      }
+    },
+    axisTick: { distance: -18, length: 4, lineStyle: { color: "#8b95a5", width: 1 } },
+    splitLine: { distance: -20, length: 8, lineStyle: { color: "#8b95a5", width: 1.2 } },
+    axisLabel: { distance: -7, color: "#6b7280", fontSize: 9 },
+    pointer: { length: "58%", width: 4, itemStyle: { color: "#172033" } },
+    anchor: { show: true, size: 7, itemStyle: { color: "#172033" } },
+    detail: {
+      valueAnimation: true,
+      offsetCenter: [0, "34%"],
+      fontSize: 22,
+      fontWeight: 900,
+      color: "#172033",
+      formatter: () => Number(current).toFixed(2)
+    },
+    title: {
+      offsetCenter: [0, "56%"],
+      fontSize: 11,
+      fontWeight: 800,
+      color: "#6b7280"
+    },
+    data: [{ value: config.gaugeValue(current), name: config.label }]
   };
 }
 
