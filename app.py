@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import re
@@ -6,7 +7,9 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import wave
 import asyncio
 from functools import lru_cache
 from html.parser import HTMLParser
@@ -35,7 +38,7 @@ FORM_ACTION_HANDLERS = {"student_upload": model_student_upload}
 ASSISTANT_CONFIG_LOCK = RLock()
 ASSISTANT_CONFIG_PATH = Path(app.instance_path) / "assistant_settings.json"
 ASSISTANT_PROVIDERS = {"ollama_first", "ollama", "external"}
-TTS_PROVIDERS = {"edge", "macos", "melotts"}
+TTS_PROVIDERS = {"edge", "macos", "melotts", "cosyvoice"}
 DEFAULT_OLLAMA_BASE_URL = os.getenv(
     "THEORY_ASSISTANT_OLLAMA_BASE_URL",
     os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
@@ -78,6 +81,12 @@ ASSISTANT_CONFIG = {
     "melotts_command": os.getenv("THEORY_ASSISTANT_MELOTTS_COMMAND", "melo"),
     "melotts_language": os.getenv("THEORY_ASSISTANT_MELOTTS_LANGUAGE", "ZH"),
     "melotts_speaker": os.getenv("THEORY_ASSISTANT_MELOTTS_SPEAKER", "ZH"),
+    "cosyvoice_service_url": os.getenv(
+        "THEORY_ASSISTANT_COSYVOICE_SERVICE_URL",
+        "http://127.0.0.1:50000/inference_sft",
+    ).strip(),
+    "cosyvoice_speaker": os.getenv("THEORY_ASSISTANT_COSYVOICE_SPEAKER", "中文女"),
+    "cosyvoice_sample_rate": int(_env_float("THEORY_ASSISTANT_COSYVOICE_SAMPLE_RATE", 22050)),
 }
 LOCAL_TTS_VOICES = {
     "Tingting": "婷婷",
@@ -98,6 +107,13 @@ EDGE_TTS_VOICES = {
 }
 MELOTTS_VOICES = {
     "melotts:ZH": "MeloTTS 中文",
+}
+COSYVOICE_VOICES = {
+    "cosyvoice:中文女": "CosyVoice 中文女",
+    "cosyvoice:中文男": "CosyVoice 中文男",
+    "cosyvoice:粤语女": "CosyVoice 粤语女",
+    "cosyvoice:英文女": "CosyVoice 英文女",
+    "cosyvoice:英文男": "CosyVoice 英文男",
 }
 THEORY_PAGE_TITLES = {
     "basic": "实验基本信息",
@@ -133,6 +149,9 @@ def _load_saved_assistant_config():
         "melotts_command",
         "melotts_language",
         "melotts_speaker",
+        "cosyvoice_service_url",
+        "cosyvoice_speaker",
+        "cosyvoice_sample_rate",
     }
     with ASSISTANT_CONFIG_LOCK:
         for key in allowed_keys:
@@ -142,8 +161,14 @@ def _load_saved_assistant_config():
                 except (TypeError, ValueError):
                     pass
                 continue
+            if key == "cosyvoice_sample_rate":
+                try:
+                    ASSISTANT_CONFIG[key] = int(float(data.get(key)))
+                except (TypeError, ValueError):
+                    pass
+                continue
             value = str(data.get(key) or "").strip()
-            if not value and key != "melotts_speaker":
+            if not value and key not in {"melotts_speaker", "cosyvoice_speaker"}:
                 continue
             if key == "provider" and value not in ASSISTANT_PROVIDERS:
                 continue
@@ -167,6 +192,9 @@ def _save_assistant_config():
             "melotts_command": ASSISTANT_CONFIG["melotts_command"],
             "melotts_language": ASSISTANT_CONFIG["melotts_language"],
             "melotts_speaker": ASSISTANT_CONFIG["melotts_speaker"],
+            "cosyvoice_service_url": ASSISTANT_CONFIG["cosyvoice_service_url"],
+            "cosyvoice_speaker": ASSISTANT_CONFIG["cosyvoice_speaker"],
+            "cosyvoice_sample_rate": ASSISTANT_CONFIG["cosyvoice_sample_rate"],
         }
     ASSISTANT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     ASSISTANT_CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -198,11 +226,17 @@ def _public_assistant_config():
             "edge_voices": EDGE_TTS_VOICES,
             "local_voices": LOCAL_TTS_VOICES,
             "melotts_voices": MELOTTS_VOICES,
+            "cosyvoice_voices": COSYVOICE_VOICES,
             "melotts": {
                 "service_url": config.get("melotts_service_url") or "",
                 "command": config.get("melotts_command") or "melo",
                 "language": config.get("melotts_language") or "ZH",
                 "speaker": config.get("melotts_speaker") or "ZH",
+            },
+            "cosyvoice": {
+                "service_url": config.get("cosyvoice_service_url") or "",
+                "speaker": config.get("cosyvoice_speaker") or "中文女",
+                "sample_rate": config.get("cosyvoice_sample_rate") or 22050,
             },
         },
     }
@@ -233,10 +267,18 @@ def _update_assistant_config(payload):
     melotts_command = str(payload.get("melotts_command") or ASSISTANT_CONFIG.get("melotts_command") or "melo").strip()
     melotts_language = str(payload.get("melotts_language") or ASSISTANT_CONFIG.get("melotts_language") or "ZH").strip()
     melotts_speaker = str(payload.get("melotts_speaker") if "melotts_speaker" in payload else ASSISTANT_CONFIG.get("melotts_speaker", "ZH")).strip()
+    cosyvoice_service_url = str(payload.get("cosyvoice_service_url") if "cosyvoice_service_url" in payload else ASSISTANT_CONFIG.get("cosyvoice_service_url", "")).strip()
+    cosyvoice_speaker = str(payload.get("cosyvoice_speaker") if "cosyvoice_speaker" in payload else ASSISTANT_CONFIG.get("cosyvoice_speaker", "中文女")).strip()
+    try:
+        cosyvoice_sample_rate = int(float(payload.get("cosyvoice_sample_rate") if "cosyvoice_sample_rate" in payload else ASSISTANT_CONFIG.get("cosyvoice_sample_rate", 22050)))
+    except (TypeError, ValueError):
+        raise ValueError("CosyVoice 采样率配置无效")
     if not tts_voice:
         raise ValueError("缺少音色配置")
     if tts_provider == "melotts" and not melotts_service_url and not melotts_command:
         raise ValueError("缺少 MeloTTS 服务地址或本机命令")
+    if tts_provider == "cosyvoice" and not cosyvoice_service_url:
+        raise ValueError("缺少 CosyVoice 服务地址")
     next_config.update({
         "tts_provider": tts_provider,
         "tts_voice": tts_voice,
@@ -245,6 +287,9 @@ def _update_assistant_config(payload):
         "melotts_command": melotts_command,
         "melotts_language": melotts_language or "ZH",
         "melotts_speaker": melotts_speaker or "ZH",
+        "cosyvoice_service_url": cosyvoice_service_url,
+        "cosyvoice_speaker": cosyvoice_speaker or "中文女",
+        "cosyvoice_sample_rate": cosyvoice_sample_rate or 22050,
     })
     if not next_config["ollama_base_url"]:
         raise ValueError("缺少 Ollama 接口地址")
@@ -655,6 +700,46 @@ def _melotts_tts_audio(text, rate, config):
     return _melotts_cli_audio(text, rate, config), "audio/wav"
 
 
+def _pcm16_to_wav_bytes(pcm_bytes, sample_rate, channels=1):
+    output = io.BytesIO()
+    with wave.open(output, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return output.getvalue()
+
+
+def _cosyvoice_tts_audio(text, rate, config):
+    service_url = str(config.get("cosyvoice_service_url") or "").strip()
+    speaker = str(config.get("cosyvoice_speaker") or "中文女").strip() or "中文女"
+    try:
+        sample_rate = int(config.get("cosyvoice_sample_rate") or 22050)
+    except (TypeError, ValueError):
+        sample_rate = 22050
+    sample_rate = min(48000, max(8000, sample_rate))
+    clipped_text = text[:4000]
+    payload = urllib.parse.urlencode({
+        "tts_text": clipped_text,
+        "spk_id": speaker,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        service_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "LinearRegressionTeachingLab/1.0",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=240) as resp:
+        content_type = (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+        audio = resp.read()
+    if content_type in {"audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/mp4"}:
+        return audio, content_type
+    return _pcm16_to_wav_bytes(audio, sample_rate), "audio/wav"
+
+
 def _tts_audio(text, voice, rate, provider=None):
     config = _assistant_config_snapshot()
     selected_provider = str(provider or config.get("tts_provider") or "edge").strip()
@@ -665,6 +750,9 @@ def _tts_audio(text, voice, rate, provider=None):
         return _edge_tts_audio(text, selected_voice, rate), "audio/mpeg", "edge"
     if selected_provider == "macos":
         return _local_tts_audio(text, selected_voice, 180 * rate), "audio/mp4", "macos"
+    if selected_provider == "cosyvoice":
+        audio, content_type = _cosyvoice_tts_audio(text, rate, config)
+        return audio, content_type, "cosyvoice"
     audio, content_type = _melotts_tts_audio(text, rate, config)
     return audio, content_type, "melotts"
 
@@ -826,7 +914,7 @@ def api_tts():
         resp.headers["X-TTS-Provider"] = used_provider
         return resp
     except FileNotFoundError:
-        return jsonify({"error": "当前系统缺少语音生成命令，请在设置页检查 MeloTTS 命令，或改用 Edge TTS / macOS 语音。"}), 500
+        return jsonify({"error": "当前系统缺少语音生成命令，请在设置页检查本地语音命令，或改用 Edge TTS / macOS 语音。"}), 500
     except ImportError:
         return jsonify({"error": "当前环境缺少 edge-tts，请先安装依赖。"}), 500
     except subprocess.CalledProcessError as exc:
@@ -836,9 +924,9 @@ def api_tts():
         return jsonify({"error": "本机语音生成超时，文本可能太长。"}), 504
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:200]
-        return jsonify({"error": f"MeloTTS 服务请求失败：HTTP {exc.code} {detail}"}), 502
+        return jsonify({"error": f"本地语音服务请求失败：HTTP {exc.code} {detail}"}), 502
     except urllib.error.URLError as exc:
-        return jsonify({"error": f"MeloTTS 服务没有启动，或服务地址不可访问：{exc.reason}"}), 503
+        return jsonify({"error": f"本地语音服务没有启动，或服务地址不可访问：{exc.reason}"}), 503
     except Exception as exc:
         return jsonify({"error": f"语音生成失败：{exc}"}), 500
 

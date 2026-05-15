@@ -15,6 +15,11 @@
     { value: "Meijia", label: "美佳 · macOS 本机" },
     { value: "Sinji", label: "善怡 · macOS 本机" },
     { value: "melotts:ZH", label: "MeloTTS 中文 · 本地模型" },
+    { value: "cosyvoice:中文女", label: "CosyVoice 中文女 · 本地模型" },
+    { value: "cosyvoice:中文男", label: "CosyVoice 中文男 · 本地模型" },
+    { value: "cosyvoice:粤语女", label: "CosyVoice 粤语女 · 本地模型" },
+    { value: "cosyvoice:英文女", label: "CosyVoice 英文女 · 本地模型" },
+    { value: "cosyvoice:英文男", label: "CosyVoice 英文男 · 本地模型" },
   ];
 
   function readStorage(key) {
@@ -55,6 +60,8 @@
       "zh-CN-YunxiaNeural",
     ]);
     const macosVoices = new Set(["Tingting", "Meijia", "Sinji"]);
+    const cosyVoices = new Set(["cosyvoice:中文女", "cosyvoice:中文男", "cosyvoice:粤语女", "cosyvoice:英文女", "cosyvoice:英文男"]);
+    if (provider === "cosyvoice") return cosyVoices.has(voice) ? voice : "cosyvoice:中文女";
     if (provider === "melotts") return "melotts:ZH";
     if (provider === "macos") return macosVoices.has(voice) ? voice : "Tingting";
     return edgeVoices.has(voice) ? voice : "zh-CN-XiaoxiaoNeural";
@@ -62,7 +69,7 @@
 
   function savedTtsProvider() {
     const value = readStorage(TTS_PROVIDER_KEY);
-    return ["edge", "macos", "melotts"].includes(value) ? value : "edge";
+    return ["edge", "macos", "melotts", "cosyvoice"].includes(value) ? value : "edge";
   }
 
   function savedVoice() {
@@ -1009,7 +1016,7 @@
       };
     },
     updateAudioSettings(settings = {}) {
-      if (settings.ttsProvider && ["edge", "macos", "melotts"].includes(settings.ttsProvider)) {
+      if (settings.ttsProvider && ["edge", "macos", "melotts", "cosyvoice"].includes(settings.ttsProvider)) {
         state.ttsProvider = settings.ttsProvider;
         writeStorage(TTS_PROVIDER_KEY, state.ttsProvider);
       }

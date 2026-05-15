@@ -16,6 +16,11 @@ const ASSISTANT_VOICE_OPTIONS = [
   { value: "Meijia", label: "美佳 · macOS 本机" },
   { value: "Sinji", label: "善怡 · macOS 本机" },
   { value: "melotts:ZH", label: "MeloTTS 中文 · 本地模型" },
+  { value: "cosyvoice:中文女", label: "CosyVoice 中文女 · 本地模型" },
+  { value: "cosyvoice:中文男", label: "CosyVoice 中文男 · 本地模型" },
+  { value: "cosyvoice:粤语女", label: "CosyVoice 粤语女 · 本地模型" },
+  { value: "cosyvoice:英文女", label: "CosyVoice 英文女 · 本地模型" },
+  { value: "cosyvoice:英文男", label: "CosyVoice 英文男 · 本地模型" },
 ];
 
 let settingsAudioUrl = "";
@@ -47,6 +52,7 @@ function assistantRuntimeLabel(provider, model) {
 }
 
 function assistantTtsProviderLabel(provider) {
+  if (provider === "cosyvoice") return "CosyVoice 本地模型";
   if (provider === "melotts") return "MeloTTS 本地模型";
   if (provider === "macos") return "macOS 本机语音";
   return "Edge TTS 在线语音";
@@ -66,6 +72,8 @@ function normalizeVoiceForProvider(provider, voice) {
     "zh-CN-YunxiaNeural",
   ]);
   const macosVoices = new Set(["Tingting", "Meijia", "Sinji"]);
+  const cosyVoices = new Set(["cosyvoice:中文女", "cosyvoice:中文男", "cosyvoice:粤语女", "cosyvoice:英文女", "cosyvoice:英文男"]);
+  if (provider === "cosyvoice") return cosyVoices.has(voice) ? voice : "cosyvoice:中文女";
   if (provider === "melotts") return "melotts:ZH";
   if (provider === "macos") return macosVoices.has(voice) ? voice : "Tingting";
   return edgeVoices.has(voice) ? voice : "zh-CN-XiaoxiaoNeural";
@@ -73,7 +81,7 @@ function normalizeVoiceForProvider(provider, voice) {
 
 function currentAssistantAudioSettings(config = null) {
   const savedProvider = readAssistantSetting(ASSISTANT_TTS_PROVIDER_KEY);
-  const provider = ["edge", "macos", "melotts"].includes(savedProvider)
+  const provider = ["edge", "macos", "melotts", "cosyvoice"].includes(savedProvider)
     ? savedProvider
     : (config?.tts?.provider || "edge");
   const savedVoice = readAssistantSetting(ASSISTANT_VOICE_KEY);
@@ -130,6 +138,8 @@ function renderSettingsSide(config, audio, latestTest = null) {
       <p>语速：${audio.rate.toFixed(2)}x</p>
       ${audio.provider === "melotts" ? `<p>服务：${escapeHtml(config?.tts?.melotts?.service_url || "http://127.0.0.1:8000/speech")}</p>` : ""}
       ${audio.provider === "melotts" ? `<p>命令：${escapeHtml(config?.tts?.melotts?.command || "melo")}</p>` : ""}
+      ${audio.provider === "cosyvoice" ? `<p>服务：${escapeHtml(config?.tts?.cosyvoice?.service_url || "http://127.0.0.1:50000/inference_sft")}</p>` : ""}
+      ${audio.provider === "cosyvoice" ? `<p>角色：${escapeHtml(config?.tts?.cosyvoice?.speaker || "中文女")}</p>` : ""}
     </div>
     <div class="helper-card">
       <h3>外部接口</h3>
@@ -224,6 +234,7 @@ async function renderSettingsShell() {
         default_voice: "zh-CN-XiaoxiaoNeural",
         default_rate: 1.15,
         melotts: { service_url: "http://127.0.0.1:8000/speech", command: "melo", language: "ZH", speaker: "ZH" },
+        cosyvoice: { service_url: "http://127.0.0.1:50000/inference_sft", speaker: "中文女", sample_rate: 22050 },
       },
     };
   }
@@ -279,9 +290,10 @@ async function renderSettingsShell() {
                 <select id="assistantTtsProvider">
                   <option value="edge">Edge TTS 在线语音</option>
                   <option value="melotts">MeloTTS 本地模型</option>
+                  <option value="cosyvoice">CosyVoice 本地模型</option>
                   <option value="macos">macOS 本机语音</option>
                 </select>
-                <p class="settings-hint">演示音质优先用 Edge TTS；离线演示用 MeloTTS；macOS 语音只作为备用。</p>
+                <p class="settings-hint">演示音质优先用 Edge TTS；离线演示可用 MeloTTS 或 CosyVoice；macOS 语音只作为备用。</p>
               </div>
               <div class="settings-field">
                 <label for="assistantVoice">音色</label>
@@ -313,6 +325,21 @@ async function renderSettingsShell() {
                 <label for="melottsSpeaker">MeloTTS 说话人</label>
                 <input id="melottsSpeaker" type="text" autocomplete="off" placeholder="默认即可">
                 <p class="settings-hint">中文一般填 <code>ZH</code>；如果本地模型有多个 speaker，再填写对应名称。</p>
+              </div>
+              <div class="settings-field">
+                <label for="cosyvoiceServiceUrl">CosyVoice 服务地址</label>
+                <input id="cosyvoiceServiceUrl" type="url" autocomplete="off" placeholder="http://127.0.0.1:50000/inference_sft">
+                <p class="settings-hint">官方 FastAPI 的 SFT 接口是 <code>/inference_sft</code>。</p>
+              </div>
+              <div class="settings-field">
+                <label for="cosyvoiceSpeaker">CosyVoice 角色</label>
+                <input id="cosyvoiceSpeaker" type="text" autocomplete="off" placeholder="中文女">
+                <p class="settings-hint">常用：<code>中文女</code>、<code>中文男</code>。实际可用值取决于启动的 CosyVoice 模型。</p>
+              </div>
+              <div class="settings-field">
+                <label for="cosyvoiceSampleRate">CosyVoice 采样率</label>
+                <input id="cosyvoiceSampleRate" type="number" min="8000" max="48000" step="1" autocomplete="off" placeholder="22050">
+                <p class="settings-hint">官方 FastAPI client 默认按 <code>22050</code> 保存音频。</p>
               </div>
             </div>
           </div>
@@ -356,6 +383,9 @@ async function renderSettingsShell() {
   const melottsCommandEl = $("melottsCommand");
   const melottsLanguageEl = $("melottsLanguage");
   const melottsSpeakerEl = $("melottsSpeaker");
+  const cosyvoiceServiceUrlEl = $("cosyvoiceServiceUrl");
+  const cosyvoiceSpeakerEl = $("cosyvoiceSpeaker");
+  const cosyvoiceSampleRateEl = $("cosyvoiceSampleRate");
   const statusEl = $("assistantSettingsStatus");
   const modelListEl = $("ollamaModelList");
   const testBoxEl = $("assistantTestResult");
@@ -375,6 +405,9 @@ async function renderSettingsShell() {
   melottsCommandEl.value = config.tts?.melotts?.command || "melo";
   melottsLanguageEl.value = config.tts?.melotts?.language || "ZH";
   melottsSpeakerEl.value = config.tts?.melotts?.speaker || "ZH";
+  cosyvoiceServiceUrlEl.value = config.tts?.cosyvoice?.service_url || "http://127.0.0.1:50000/inference_sft";
+  cosyvoiceSpeakerEl.value = config.tts?.cosyvoice?.speaker || "中文女";
+  cosyvoiceSampleRateEl.value = String(config.tts?.cosyvoice?.sample_rate || 22050);
   renderSettingsSide(config, audio);
 
   const setStatus = (text, type = "") => {
@@ -430,6 +463,9 @@ async function renderSettingsShell() {
       melotts_command: melottsCommandEl.value.trim(),
       melotts_language: melottsLanguageEl.value.trim(),
       melotts_speaker: melottsSpeakerEl.value.trim(),
+      cosyvoice_service_url: cosyvoiceServiceUrlEl.value.trim(),
+      cosyvoice_speaker: cosyvoiceSpeakerEl.value.trim(),
+      cosyvoice_sample_rate: Number(cosyvoiceSampleRateEl.value || 22050),
     };
     const apiKey = externalKeyEl.value.trim();
     if (apiKey) payload.external_api_key = apiKey;
@@ -455,7 +491,7 @@ async function renderSettingsShell() {
     return saved;
   }
 
-  [providerEl, ollamaBaseEl, ollamaModelEl, externalBaseEl, externalModelEl, ttsProviderEl, voiceEl, melottsServiceUrlEl, melottsCommandEl, melottsLanguageEl, melottsSpeakerEl].forEach(el => {
+  [providerEl, ollamaBaseEl, ollamaModelEl, externalBaseEl, externalModelEl, ttsProviderEl, voiceEl, melottsServiceUrlEl, melottsCommandEl, melottsLanguageEl, melottsSpeakerEl, cosyvoiceServiceUrlEl, cosyvoiceSpeakerEl, cosyvoiceSampleRateEl].forEach(el => {
     el.addEventListener("input", syncSummary);
     el.addEventListener("change", syncSummary);
   });
