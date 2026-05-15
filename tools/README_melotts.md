@@ -2,6 +2,56 @@
 
 这个服务用于给 AI 助教提供真正离线的中文朗读。主项目不直接加载 MeloTTS 模型，只调用本机 HTTP 服务。
 
+## 本机文件位置
+
+本项目自己的 MeloTTS 服务代码：
+
+```text
+/Users/d1a0y1bb/Documents/TempProjects/Linear-Regression_Boston-Housing-Dataset/tools/melotts_service.py
+```
+
+服务说明和依赖文件：
+
+```text
+/Users/d1a0y1bb/Documents/TempProjects/Linear-Regression_Boston-Housing-Dataset/tools/README_melotts.md
+/Users/d1a0y1bb/Documents/TempProjects/Linear-Regression_Boston-Housing-Dataset/tools/requirements-melotts-service.txt
+```
+
+MeloTTS Python 包安装在项目独立虚拟环境里：
+
+```text
+/Users/d1a0y1bb/Documents/TempProjects/Linear-Regression_Boston-Housing-Dataset/.venv-melotts/
+/Users/d1a0y1bb/Documents/TempProjects/Linear-Regression_Boston-Housing-Dataset/.venv-melotts/lib/python3.11/site-packages/melo/
+```
+
+`.venv-melotts` 已经写进 `.gitignore`，不会提交到仓库。
+
+当前中文模型缓存位置：
+
+```text
+/Users/d1a0y1bb/.cache/huggingface/hub/models--myshell-ai--MeloTTS-Chinese/
+/Users/d1a0y1bb/.cache/huggingface/hub/models--myshell-ai--MeloTTS-Chinese/snapshots/af5d207a364ea4208c6f589c89f57f88414bdd16/
+```
+
+这个目录里主要有：
+
+```text
+config.json
+checkpoint.pth
+```
+
+中文合成时还会用到 BERT 相关缓存：
+
+```text
+/Users/d1a0y1bb/.cache/huggingface/hub/models--bert-base-multilingual-uncased/
+```
+
+当前运行命令：
+
+```bash
+.venv-melotts/bin/uvicorn tools.melotts_service:app --host 0.0.0.0 --port 8000
+```
+
 ## 推荐启动方式
 
 先单独准备 MeloTTS 环境：
