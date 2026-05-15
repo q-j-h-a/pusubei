@@ -963,6 +963,27 @@
       updateButtons();
     },
     attachSelectionTarget,
+    audioSettings() {
+      return {
+        voiceURI: state.voiceURI,
+        rate: state.rate,
+        voices: TTS_VOICES.slice(),
+      };
+    },
+    updateAudioSettings(settings = {}) {
+      if (settings.voiceURI && TTS_VOICES.some(voice => voice.value === settings.voiceURI)) {
+        state.voiceURI = settings.voiceURI;
+        writeStorage(VOICE_KEY, state.voiceURI);
+      }
+      const nextRate = Number(settings.rate);
+      if (Number.isFinite(nextRate) && nextRate >= 0.85 && nextRate <= 1.45) {
+        state.rate = nextRate;
+        writeStorage(RATE_KEY, String(nextRate));
+      }
+      populateVoices();
+      updateRateLabel();
+      updateButtons();
+    },
     setPage(page) {
       const nextPageId = page.id || "";
       state.pageId = nextPageId;

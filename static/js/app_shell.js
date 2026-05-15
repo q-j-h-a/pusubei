@@ -21,7 +21,7 @@ async function setPage(page) {
   stopAuto();
   currentPage = page;
   setActive(page);
-  if (window.TheoryAssistant && ["preprocess", "train_eval", "predict", "student"].includes(page)) {
+  if (window.TheoryAssistant && ["preprocess", "train_eval", "predict", "student", "settings"].includes(page)) {
     window.TheoryAssistant.hide();
   }
   destroyDataGrid();
@@ -48,6 +48,8 @@ async function setPage(page) {
       }
     } else if (page === "student") {
       await renderStudentShell();
+    } else if (page === "settings") {
+      await renderSettingsShell();
     } else {
       await renderTheory(page);
     }

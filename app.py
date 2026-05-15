@@ -9,6 +9,7 @@ import asyncio
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
+from threading import RLock
 
 from flask import Flask, render_template, request, jsonify, make_response
 
@@ -29,8 +30,33 @@ app.json.sort_keys = False
 
 JSON_ACTION_HANDLERS = dict(JSON_ACTIONS)
 FORM_ACTION_HANDLERS = {"student_upload": model_student_upload}
-THEORY_ASSISTANT_MODEL = os.getenv("THEORY_ASSISTANT_MODEL", "JoyAI-1.3T")
-THEORY_ASSISTANT_BASE_URL = os.getenv("THEORY_ASSISTANT_BASE_URL", "https://api.masterjie.eu.cc/v1").rstrip("/")
+ASSISTANT_CONFIG_LOCK = RLock()
+ASSISTANT_CONFIG_PATH = Path(app.instance_path) / "assistant_settings.json"
+ASSISTANT_PROVIDERS = {"ollama_first", "ollama", "external"}
+DEFAULT_OLLAMA_BASE_URL = os.getenv(
+    "THEORY_ASSISTANT_OLLAMA_BASE_URL",
+    os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"),
+).rstrip("/")
+DEFAULT_OLLAMA_MODEL = os.getenv(
+    "THEORY_ASSISTANT_OLLAMA_MODEL",
+    os.getenv("OLLAMA_MODEL", "gpt-oss:20b"),
+)
+DEFAULT_EXTERNAL_BASE_URL = os.getenv(
+    "THEORY_ASSISTANT_EXTERNAL_BASE_URL",
+    os.getenv("THEORY_ASSISTANT_BASE_URL", "https://api.masterjie.eu.cc/v1"),
+).rstrip("/")
+DEFAULT_EXTERNAL_MODEL = os.getenv(
+    "THEORY_ASSISTANT_EXTERNAL_MODEL",
+    os.getenv("THEORY_ASSISTANT_MODEL", "JoyAI-1.3T"),
+)
+ASSISTANT_CONFIG = {
+    "provider": os.getenv("THEORY_ASSISTANT_PROVIDER", "ollama_first"),
+    "ollama_base_url": DEFAULT_OLLAMA_BASE_URL,
+    "ollama_model": DEFAULT_OLLAMA_MODEL,
+    "external_base_url": DEFAULT_EXTERNAL_BASE_URL,
+    "external_model": DEFAULT_EXTERNAL_MODEL,
+    "external_api_key": os.getenv("THEORY_ASSISTANT_API_KEY", ""),
+}
 LOCAL_TTS_VOICES = {
     "Tingting": "婷婷",
     "Meijia": "美佳",
@@ -60,6 +86,101 @@ THEORY_PAGE_TITLES = {
     "result": "预期成果",
     "thinking": "思考拓展",
 }
+
+
+def _load_saved_assistant_config():
+    if not ASSISTANT_CONFIG_PATH.exists():
+        return
+    try:
+        data = json.loads(ASSISTANT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    allowed_keys = {"provider", "ollama_base_url", "ollama_model", "external_base_url", "external_model"}
+    with ASSISTANT_CONFIG_LOCK:
+        for key in allowed_keys:
+            value = str(data.get(key) or "").strip()
+            if not value:
+                continue
+            if key == "provider" and value not in ASSISTANT_PROVIDERS:
+                continue
+            ASSISTANT_CONFIG[key] = value.rstrip("/") if key.endswith("_base_url") else value
+
+
+def _save_assistant_config():
+    with ASSISTANT_CONFIG_LOCK:
+        data = {
+            "provider": ASSISTANT_CONFIG["provider"],
+            "ollama_base_url": ASSISTANT_CONFIG["ollama_base_url"],
+            "ollama_model": ASSISTANT_CONFIG["ollama_model"],
+            "external_base_url": ASSISTANT_CONFIG["external_base_url"],
+            "external_model": ASSISTANT_CONFIG["external_model"],
+        }
+    ASSISTANT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ASSISTANT_CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _assistant_config_snapshot():
+    with ASSISTANT_CONFIG_LOCK:
+        return dict(ASSISTANT_CONFIG)
+
+
+def _public_assistant_config():
+    config = _assistant_config_snapshot()
+    provider = config["provider"] if config.get("provider") in ASSISTANT_PROVIDERS else "ollama_first"
+    return {
+        "provider": provider,
+        "ollama": {
+            "base_url": config["ollama_base_url"],
+            "model": config["ollama_model"],
+        },
+        "external": {
+            "base_url": config["external_base_url"],
+            "model": config["external_model"],
+            "api_key_configured": bool(config.get("external_api_key")),
+        },
+        "tts": {
+            "default_voice": "zh-CN-XiaoxiaoNeural",
+            "default_rate": 1.15,
+            "edge_voices": EDGE_TTS_VOICES,
+            "local_voices": LOCAL_TTS_VOICES,
+        },
+    }
+
+
+def _update_assistant_config(payload):
+    provider = str(payload.get("provider") or "").strip()
+    if provider not in ASSISTANT_PROVIDERS:
+        raise ValueError("模型模式无效")
+
+    next_config = {
+        "provider": provider,
+        "ollama_base_url": str(payload.get("ollama_base_url") or "").strip().rstrip("/"),
+        "ollama_model": str(payload.get("ollama_model") or "").strip(),
+        "external_base_url": str(payload.get("external_base_url") or "").strip().rstrip("/"),
+        "external_model": str(payload.get("external_model") or "").strip(),
+    }
+    if not next_config["ollama_base_url"]:
+        raise ValueError("缺少 Ollama 接口地址")
+    if not next_config["ollama_model"]:
+        raise ValueError("缺少 Ollama 模型名")
+    if provider in {"external", "ollama_first"} and not next_config["external_base_url"]:
+        raise ValueError("缺少外部 API 接口地址")
+    if provider in {"external", "ollama_first"} and not next_config["external_model"]:
+        raise ValueError("缺少外部 API 模型名")
+
+    with ASSISTANT_CONFIG_LOCK:
+        ASSISTANT_CONFIG.update(next_config)
+        if payload.get("clear_external_api_key"):
+            ASSISTANT_CONFIG["external_api_key"] = ""
+        elif "external_api_key" in payload:
+            api_key = str(payload.get("external_api_key") or "").strip()
+            if api_key:
+                ASSISTANT_CONFIG["external_api_key"] = api_key
+    _save_assistant_config()
+    return _public_assistant_config()
+
+
+_load_saved_assistant_config()
 
 
 class _TheoryHtmlTextExtractor(HTMLParser):
@@ -214,37 +335,90 @@ def _build_theory_chat_prompt(title, text, question, history, pages):
     )
 
 
-def _request_chat_completion(messages, max_tokens):
-    api_key = os.getenv("THEORY_ASSISTANT_API_KEY")
-    if not api_key:
-        raise RuntimeError("未配置 THEORY_ASSISTANT_API_KEY")
+def _extract_chat_content(data):
+    try:
+        message = data["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError("AI 接口返回格式异常") from exc
+    content = str(message.get("content") or "").strip()
+    if content:
+        return content
+    raise RuntimeError("AI 接口没有返回最终回答")
 
+
+def _request_openai_compatible(base_url, model, messages, max_tokens, api_key=""):
     payload = {
-        "model": THEORY_ASSISTANT_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": 0.2,
         "max_tokens": max_tokens,
     }
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "LinearRegressionTeachingLab/1.0",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(
-        f"{THEORY_ASSISTANT_BASE_URL}/chat/completions",
+        f"{base_url.rstrip('/')}/chat/completions",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "User-Agent": "LinearRegressionTeachingLab/1.0",
-        },
+        headers=headers,
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
         data = json.loads(resp.read().decode("utf-8"))
-    try:
-        return data["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("AI 接口返回格式异常") from exc
+    return _extract_chat_content(data)
+
+
+def _request_chat_completion(messages, max_tokens):
+    config = _assistant_config_snapshot()
+    provider = config.get("provider") if config.get("provider") in ASSISTANT_PROVIDERS else "ollama_first"
+    errors = []
+
+    if provider in {"ollama_first", "ollama"}:
+        try:
+            return {
+                "content": _request_openai_compatible(
+                    config["ollama_base_url"],
+                    config["ollama_model"],
+                    messages,
+                    max_tokens * 2,
+                ),
+                "model": config["ollama_model"],
+                "provider": "ollama",
+            }
+        except Exception as exc:
+            if provider == "ollama":
+                raise RuntimeError(f"本地 Ollama 请求失败：{exc}") from exc
+            errors.append(f"本地 Ollama：{exc}")
+
+    if provider in {"ollama_first", "external"}:
+        api_key = config.get("external_api_key") or ""
+        if not api_key:
+            errors.append("外部 API：未配置 API key")
+        else:
+            try:
+                return {
+                    "content": _request_openai_compatible(
+                        config["external_base_url"],
+                        config["external_model"],
+                        messages,
+                        max_tokens,
+                        api_key=api_key,
+                    ),
+                    "model": config["external_model"],
+                    "provider": "external",
+                }
+            except Exception as exc:
+                if provider == "external":
+                    raise RuntimeError(f"外部 API 请求失败：{exc}") from exc
+                errors.append(f"外部 API：{exc}")
+
+    raise RuntimeError("；".join(errors) or "没有可用的 AI 模型配置")
 
 
 def _request_theory_explanation(title, text):
-    return _request_chat_completion(
+    result = _request_chat_completion(
         [
             {
                 "role": "system",
@@ -254,12 +428,13 @@ def _request_theory_explanation(title, text):
         ],
         max_tokens=480,
     )
+    return result
 
 
 def _request_theory_answer(title, text, question, history=None, pages=None):
     cleaned_history = _clean_theory_chat_history(history)
     cleaned_pages = _build_theory_page_context(pages, title)
-    return _request_chat_completion(
+    result = _request_chat_completion(
         [
             {
                 "role": "system",
@@ -269,6 +444,7 @@ def _request_theory_answer(title, text, question, history=None, pages=None):
         ],
         max_tokens=320,
     )
+    return result
 
 
 def _local_tts_audio(text, voice, rate):
@@ -341,9 +517,11 @@ def api_theory_explain():
     if len(text) < 20:
         return jsonify({"error": "当前页面文本太少，无法生成讲解。"}), 400
     try:
+        result = _request_theory_explanation(title, text)
         return jsonify({
-            "model": THEORY_ASSISTANT_MODEL,
-            "explanation": _request_theory_explanation(title, text),
+            "model": result["model"],
+            "provider": result["provider"],
+            "explanation": result["content"],
         })
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
@@ -367,9 +545,11 @@ def api_theory_chat():
     if len(question) < 2:
         return jsonify({"error": "请输入要提问的内容。"}), 400
     try:
+        result = _request_theory_answer(title, text, question, history, pages)
         return jsonify({
-            "model": THEORY_ASSISTANT_MODEL,
-            "answer": _request_theory_answer(title, text, question, history, pages),
+            "model": result["model"],
+            "provider": result["provider"],
+            "answer": result["content"],
         })
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
@@ -378,6 +558,49 @@ def api_theory_chat():
         return jsonify({"error": f"AI 接口请求失败：HTTP {exc.code} {detail}"}), 502
     except Exception as exc:
         return jsonify({"error": f"AI 问答失败：{exc}"}), 500
+
+
+@app.route("/api/assistant_config", methods=["GET"])
+def api_assistant_config():
+    return jsonify(_public_assistant_config())
+
+
+@app.route("/api/assistant_config", methods=["POST"])
+def api_update_assistant_config():
+    body = request.get_json() or {}
+    try:
+        return jsonify(_update_assistant_config(body))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except OSError as exc:
+        return jsonify({"error": f"保存设置失败：{exc}"}), 500
+
+
+@app.route("/api/assistant_models", methods=["GET"])
+def api_assistant_models():
+    config = _assistant_config_snapshot()
+    base_url = str(request.args.get("base_url") or config["ollama_base_url"]).strip().rstrip("/")
+    if not base_url:
+        return jsonify({"error": "缺少接口地址"}), 400
+    req = urllib.request.Request(
+        f"{base_url}/models",
+        headers={"User-Agent": "LinearRegressionTeachingLab/1.0"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        models = []
+        for item in data.get("data", []):
+            model_id = str(item.get("id") or "").strip()
+            if model_id:
+                models.append(model_id)
+        return jsonify({"base_url": base_url, "models": models})
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        return jsonify({"error": f"模型列表请求失败：HTTP {exc.code} {detail}"}), 502
+    except Exception as exc:
+        return jsonify({"error": f"模型列表请求失败：{exc}"}), 502
 
 
 @app.route("/api/tts", methods=["POST"])
