@@ -907,6 +907,53 @@
       box-shadow: var(--shadow);
       padding: 22px;
     }
+    .settings-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: start;
+      border: 1px solid #dbe6f6;
+      background:
+        linear-gradient(135deg, rgba(239, 246, 255, .96), rgba(255, 255, 255, .92)),
+        #fff;
+    }
+    .settings-hero-mark {
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: #fff;
+      font-weight: 900;
+      box-shadow: 0 16px 34px rgba(17, 24, 39, .16);
+    }
+    .settings-state-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .settings-state-card {
+      border: 1px solid #dbe3f1;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .74);
+      padding: 13px;
+      min-width: 0;
+    }
+    .settings-state-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+    .settings-state-card strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
     .settings-card + .settings-card {
       margin-top: 18px;
     }
@@ -987,6 +1034,10 @@
       background: #111827;
       box-shadow: 0 14px 24px rgba(17, 24, 39, .16);
     }
+    .settings-actions button:disabled {
+      cursor: not-allowed;
+      opacity: .55;
+    }
     .settings-status {
       min-height: 22px;
       color: var(--muted);
@@ -1041,6 +1092,40 @@
       border-color: rgba(37, 99, 235, .48);
       background: var(--purple-soft);
       color: var(--purple);
+    }
+    .settings-test-box {
+      border: 1px solid #dbe3f1;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .86);
+      padding: 14px;
+      margin-top: 14px;
+      min-height: 116px;
+    }
+    .settings-test-box strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .settings-test-box p {
+      margin: 0;
+      color: #334155;
+      line-height: 1.7;
+      font-size: 13px;
+    }
+    .settings-provider-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: #eafaf4;
+      color: #087b5d;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .settings-provider-pill.external {
+      background: #fff7e8;
+      color: #9a5b05;
     }
     .check-list {
       display: grid;
@@ -2122,7 +2207,8 @@
         grid-template-columns: 1fr;
       }
       .settings-layout,
-      .settings-grid {
+      .settings-grid,
+      .settings-state-grid {
         grid-template-columns: 1fr;
       }
       .settings-grid .wide {

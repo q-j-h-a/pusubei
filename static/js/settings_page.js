@@ -2,6 +2,7 @@
 
 const ASSISTANT_VOICE_KEY = "linearRegressionTheoryAssistantVoice";
 const ASSISTANT_RATE_KEY = "linearRegressionTheoryAssistantRate";
+const ASSISTANT_SAMPLE_TEXT = "你好，我是 AI 助教。这是当前音色和语速的试听效果。";
 
 const ASSISTANT_VOICE_OPTIONS = [
   { value: "zh-CN-XiaoxiaoNeural", label: "晓晓 · 女声 · 温暖" },
@@ -12,6 +13,8 @@ const ASSISTANT_VOICE_OPTIONS = [
   { value: "zh-CN-YunxiaNeural", label: "云夏 · 男声 · 年轻" },
   { value: "Tingting", label: "婷婷 · 本机备用" },
 ];
+
+let settingsAudioUrl = "";
 
 function readAssistantSetting(key) {
   try {
@@ -33,6 +36,12 @@ function assistantProviderLabel(provider) {
   return "本地优先";
 }
 
+function assistantRuntimeLabel(provider, model) {
+  if (provider === "ollama") return `本地 Ollama · ${model || "-"}`;
+  if (provider === "external") return `外部 API · ${model || "-"}`;
+  return model || "-";
+}
+
 function assistantVoiceLabel(value) {
   return ASSISTANT_VOICE_OPTIONS.find(item => item.value === value)?.label || value || "未设置";
 }
@@ -49,9 +58,30 @@ function currentAssistantAudioSettings() {
   return { voice, rate };
 }
 
-function renderSettingsSide(config, audio) {
+function providerPill(provider, model) {
+  const isExternal = provider === "external";
+  return `<span class="settings-provider-pill${isExternal ? " external" : ""}">${escapeHtml(assistantRuntimeLabel(provider, model))}</span>`;
+}
+
+function renderSettingsSide(config, audio, latestTest = null) {
   const provider = config?.provider || "ollama_first";
   const apiKeyState = config?.external?.api_key_configured ? "外部 API key 已配置" : "外部 API key 未配置";
+  const testHtml = latestTest
+    ? `
+      <div class="settings-test-box">
+        <strong>最近一次模型测试</strong>
+        <p>${providerPill(latestTest.provider, latestTest.model)}</p>
+        <p style="margin-top:8px">${escapeHtml(latestTest.answer || "")}</p>
+        <p class="settings-hint">耗时：${escapeHtml(String(latestTest.elapsed_ms || "-"))} ms</p>
+      </div>
+    `
+    : `
+      <div class="settings-test-box">
+        <strong>模型测试结果</strong>
+        <p>点击“测试当前模型”后，这里会显示实际调用来源、模型名和回复内容。</p>
+      </div>
+    `;
+
   $("rightPanel").innerHTML = `
     <div class="right-title">当前助教配置</div>
     <div class="helper-card">
@@ -72,6 +102,7 @@ function renderSettingsSide(config, audio) {
       <p>${escapeHtml(apiKeyState)}</p>
       <p>API key 不会在页面里回显。填入新 key 后，只会更新当前后端运行进程。</p>
     </div>
+    ${testHtml}
   `;
 }
 
@@ -95,14 +126,72 @@ async function loadAssistantConfig() {
   return data;
 }
 
+function renderSettingsSummary(config, audio) {
+  const provider = config?.provider || "ollama_first";
+  return `
+    <section class="settings-card settings-hero">
+      <div>
+        <h2>AI 助教设置</h2>
+        <p class="settings-lead">本页用于演示前快速检查模型、接口、音色和语速。默认优先使用本机 Ollama，外部 API 作为可选方案。</p>
+        <div class="settings-state-grid">
+          <div class="settings-state-card">
+            <span>模型模式</span>
+            <strong id="settingsModeValue">${escapeHtml(assistantProviderLabel(provider))}</strong>
+          </div>
+          <div class="settings-state-card">
+            <span>本地模型</span>
+            <strong id="settingsModelValue">${escapeHtml(config?.ollama?.model || "-")}</strong>
+          </div>
+          <div class="settings-state-card">
+            <span>朗读声音</span>
+            <strong id="settingsVoiceValue">${escapeHtml(assistantVoiceLabel(audio.voice))} · ${audio.rate.toFixed(2)}x</strong>
+          </div>
+        </div>
+      </div>
+      <div class="settings-hero-mark">AI</div>
+    </section>
+  `;
+}
+
+function updateSettingsSummary(config, audio) {
+  const modeEl = $("settingsModeValue");
+  const modelEl = $("settingsModelValue");
+  const voiceEl = $("settingsVoiceValue");
+  if (modeEl) modeEl.textContent = assistantProviderLabel(config?.provider || "ollama_first");
+  if (modelEl) modelEl.textContent = config?.ollama?.model || "-";
+  if (voiceEl) voiceEl.textContent = `${assistantVoiceLabel(audio.voice)} · ${audio.rate.toFixed(2)}x`;
+}
+
+function currentFormAudio(voiceEl, rateEl) {
+  const rateValue = Number(rateEl.value);
+  return {
+    voice: voiceEl.value || "zh-CN-XiaoxiaoNeural",
+    rate: Number.isFinite(rateValue) ? rateValue : 1.15,
+  };
+}
+
 async function renderSettingsShell() {
   document.querySelector(".shell").classList.remove("theory");
   if (window.TheoryAssistant) window.TheoryAssistant.hide();
+
+  const audio = currentAssistantAudioSettings();
+  let config;
+  let initialError = "";
+  try {
+    config = await loadAssistantConfig();
+  } catch (err) {
+    initialError = err.message;
+    config = {
+      provider: "ollama_first",
+      ollama: { base_url: "http://127.0.0.1:11434/v1", model: "gpt-oss:20b" },
+      external: { base_url: "https://api.masterjie.eu.cc/v1", model: "JoyAI-1.3T", api_key_configured: false },
+    };
+  }
+
   $("main").innerHTML = `
-    <div class="settings-layout">
+    ${renderSettingsSummary(config, audio)}
+    <div class="settings-layout" style="margin-top:18px">
       <section class="settings-card">
-        <h2>AI 助教设置</h2>
-        <p class="settings-lead">这里统一管理 AI 助教的模型、接口、音色和语速。默认优先使用本机 Ollama，外部 API 保留为可选路径。</p>
         <form class="settings-form" id="assistantSettingsForm">
           <div class="settings-section">
             <h3>模型配置</h3>
@@ -118,12 +207,12 @@ async function renderSettingsShell() {
               <div class="settings-field">
                 <label for="ollamaBaseUrl">Ollama 接口地址</label>
                 <input id="ollamaBaseUrl" type="url" autocomplete="off">
-                <p class="settings-hint">当前推荐：<code>http://127.0.0.1:11434/v1</code></p>
+                <p class="settings-hint">推荐：<code>http://127.0.0.1:11434/v1</code></p>
               </div>
               <div class="settings-field">
                 <label for="ollamaModel">Ollama 模型名</label>
                 <input id="ollamaModel" type="text" autocomplete="off">
-                <p class="settings-hint">当前推荐：<code>gpt-oss:20b</code></p>
+                <p class="settings-hint">推荐：<code>gpt-oss:20b</code></p>
               </div>
               <div class="settings-field">
                 <label for="externalBaseUrl">外部 API 地址</label>
@@ -154,14 +243,16 @@ async function renderSettingsShell() {
               <div class="settings-field">
                 <div class="settings-label"><span>语速</span><strong id="assistantRateValue">1.15x</strong></div>
                 <input id="assistantRate" type="range" min="0.85" max="1.45" step="0.05" value="1.15">
-                <p class="settings-hint">这个设置会同步到朗读当前页和 AI 回答朗读。</p>
+                <p class="settings-hint">会同步到朗读当前页和 AI 回答朗读。</p>
               </div>
             </div>
           </div>
 
           <div class="settings-actions">
             <button class="primary" id="saveAssistantSettings" type="submit">保存设置</button>
-            <button id="checkOllamaModels" type="button">检测 Ollama 模型</button>
+            <button id="testAssistantModel" type="button">测试当前模型</button>
+            <button id="testAssistantVoice" type="button">试听语音</button>
+            <button id="checkOllamaModels" type="button">读取 Ollama 模型</button>
             <span class="settings-status" id="assistantSettingsStatus"></span>
           </div>
         </form>
@@ -169,27 +260,17 @@ async function renderSettingsShell() {
 
       <section class="settings-card">
         <h3>本机 Ollama 模型</h3>
-        <p class="settings-lead">点击模型名可以写入左侧模型配置。</p>
+        <p class="settings-lead">点击模型名可以写入左侧模型配置。演示前建议点一次读取，确认本机模型服务正常。</p>
         <div class="settings-model-list" id="ollamaModelList">
-          <div class="empty-state" style="min-height:160px">点击“检测 Ollama 模型”后显示。</div>
+          <div class="empty-state" style="min-height:160px">点击“读取 Ollama 模型”后显示。</div>
+        </div>
+        <div class="settings-test-box" id="assistantTestResult">
+          <strong>模型测试结果</strong>
+          <p>点击“测试当前模型”后，这里会显示实际调用来源、模型名和回复内容。</p>
         </div>
       </section>
     </div>
   `;
-
-  const audio = currentAssistantAudioSettings();
-  let config;
-  try {
-    config = await loadAssistantConfig();
-  } catch (err) {
-    config = {
-      provider: "ollama_first",
-      ollama: { base_url: "http://127.0.0.1:11434/v1", model: "gpt-oss:20b" },
-      external: { base_url: "https://api.masterjie.eu.cc/v1", model: "JoyAI-1.3T", api_key_configured: false },
-    };
-    $("assistantSettingsStatus").textContent = err.message;
-    $("assistantSettingsStatus").className = "settings-status error";
-  }
 
   const providerEl = $("assistantProvider");
   const ollamaBaseEl = $("ollamaBaseUrl");
@@ -203,6 +284,9 @@ async function renderSettingsShell() {
   const rateValueEl = $("assistantRateValue");
   const statusEl = $("assistantSettingsStatus");
   const modelListEl = $("ollamaModelList");
+  const testBoxEl = $("assistantTestResult");
+  const testModelBtn = $("testAssistantModel");
+  const testVoiceBtn = $("testAssistantVoice");
 
   providerEl.value = config.provider || "ollama_first";
   ollamaBaseEl.value = config.ollama?.base_url || "http://127.0.0.1:11434/v1";
@@ -218,9 +302,24 @@ async function renderSettingsShell() {
     statusEl.textContent = text;
     statusEl.className = `settings-status ${type}`.trim();
   };
+  if (initialError) setStatus(initialError, "error");
+
+  function syncSummary() {
+    updateSettingsSummary(
+      {
+        provider: providerEl.value,
+        ollama: { model: ollamaModelEl.value.trim() },
+      },
+      currentFormAudio(voiceEl, rateEl)
+    );
+  }
+
+  function updateTestBox(html) {
+    testBoxEl.innerHTML = html;
+  }
 
   async function refreshModels() {
-    setStatus("正在检测 Ollama 模型...");
+    setStatus("正在读取 Ollama 模型...");
     const url = `/api/assistant_models?base_url=${encodeURIComponent(ollamaBaseEl.value.trim())}`;
     const resp = await fetch(url);
     const data = await resp.json().catch(() => ({}));
@@ -230,26 +329,13 @@ async function renderSettingsShell() {
       btn.addEventListener("click", () => {
         ollamaModelEl.value = btn.dataset.ollamaModel || "";
         modelListEl.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === btn));
+        syncSummary();
       });
     });
     setStatus(`读取到 ${data.models?.length || 0} 个模型。`, "ready");
   }
 
-  rateEl.addEventListener("input", () => {
-    const nextRate = Number(rateEl.value);
-    rateValueEl.textContent = `${(Number.isFinite(nextRate) ? nextRate : 1.15).toFixed(2)}x`;
-  });
-
-  $("checkOllamaModels").addEventListener("click", async () => {
-    try {
-      await refreshModels();
-    } catch (err) {
-      setStatus(err.message, "error");
-    }
-  });
-
-  $("assistantSettingsForm").addEventListener("submit", async event => {
-    event.preventDefault();
+  async function saveSettings({ quiet = false } = {}) {
     const nextRate = Number(rateEl.value);
     const payload = {
       provider: providerEl.value,
@@ -261,24 +347,120 @@ async function renderSettingsShell() {
     };
     const apiKey = externalKeyEl.value.trim();
     if (apiKey) payload.external_api_key = apiKey;
+    if (!quiet) setStatus("正在保存...");
+    const saved = await postJson("/api/assistant_config", payload);
+    const audioSettings = currentFormAudio(voiceEl, rateEl);
+    writeAssistantSetting(ASSISTANT_VOICE_KEY, audioSettings.voice);
+    writeAssistantSetting(ASSISTANT_RATE_KEY, String(Number.isFinite(nextRate) ? nextRate : 1.15));
+    if (window.TheoryAssistant?.updateAudioSettings) {
+      window.TheoryAssistant.updateAudioSettings({
+        voiceURI: audioSettings.voice,
+        rate: audioSettings.rate,
+      });
+    }
+    externalKeyEl.value = "";
+    clearKeyEl.checked = false;
+    config = saved;
+    renderSettingsSide(saved, audioSettings);
+    updateSettingsSummary(saved, audioSettings);
+    if (!quiet) setStatus("设置已保存。", "ready");
+    return saved;
+  }
+
+  [providerEl, ollamaBaseEl, ollamaModelEl, externalBaseEl, externalModelEl, voiceEl].forEach(el => {
+    el.addEventListener("input", syncSummary);
+    el.addEventListener("change", syncSummary);
+  });
+
+  rateEl.addEventListener("input", () => {
+    const nextRate = Number(rateEl.value);
+    rateValueEl.textContent = `${(Number.isFinite(nextRate) ? nextRate : 1.15).toFixed(2)}x`;
+    syncSummary();
+  });
+
+  $("checkOllamaModels").addEventListener("click", async () => {
     try {
-      setStatus("正在保存...");
-      const saved = await postJson("/api/assistant_config", payload);
-      writeAssistantSetting(ASSISTANT_VOICE_KEY, voiceEl.value);
-      writeAssistantSetting(ASSISTANT_RATE_KEY, String(Number.isFinite(nextRate) ? nextRate : 1.15));
+      await refreshModels();
+    } catch (err) {
+      setStatus(err.message, "error");
+    }
+  });
+
+  testModelBtn.addEventListener("click", async () => {
+    try {
+      testModelBtn.disabled = true;
+      await saveSettings({ quiet: true });
+      setStatus("正在测试当前模型...");
+      updateTestBox(`
+        <strong>模型测试结果</strong>
+        <p>正在请求当前模型，请稍等。</p>
+      `);
+      const result = await postJson("/api/assistant_test", {
+        question: "请用一句话说明你现在是否可以作为本地机器学习实验助教工作。",
+      });
+      updateTestBox(`
+        <strong>模型测试结果</strong>
+        <p>${providerPill(result.provider, result.model)}</p>
+        <p style="margin-top:8px">${escapeHtml(result.answer || "")}</p>
+        <p class="settings-hint">耗时：${escapeHtml(String(result.elapsed_ms || "-"))} ms</p>
+      `);
+      renderSettingsSide(config, currentFormAudio(voiceEl, rateEl), result);
+      setStatus("模型测试通过。", "ready");
+    } catch (err) {
+      updateTestBox(`
+        <strong>模型测试失败</strong>
+        <p>${escapeHtml(err.message)}</p>
+      `);
+      setStatus(err.message, "error");
+    } finally {
+      testModelBtn.disabled = false;
+    }
+  });
+
+  testVoiceBtn.addEventListener("click", async () => {
+    try {
+      testVoiceBtn.disabled = true;
+      const audioSettings = currentFormAudio(voiceEl, rateEl);
+      writeAssistantSetting(ASSISTANT_VOICE_KEY, audioSettings.voice);
+      writeAssistantSetting(ASSISTANT_RATE_KEY, String(audioSettings.rate));
       if (window.TheoryAssistant?.updateAudioSettings) {
         window.TheoryAssistant.updateAudioSettings({
-          voiceURI: voiceEl.value,
-          rate: Number.isFinite(nextRate) ? nextRate : 1.15,
+          voiceURI: audioSettings.voice,
+          rate: audioSettings.rate,
         });
       }
-      externalKeyEl.value = "";
-      clearKeyEl.checked = false;
-      renderSettingsSide(saved, {
-        voice: voiceEl.value,
-        rate: Number.isFinite(nextRate) ? nextRate : 1.15,
+      setStatus("正在生成试听语音...");
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: ASSISTANT_SAMPLE_TEXT,
+          voice: audioSettings.voice,
+          rate: audioSettings.rate,
+        }),
       });
-      setStatus("设置已保存。", "ready");
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `试听失败：${resp.status}`);
+      }
+      const blob = await resp.blob();
+      if (settingsAudioUrl) URL.revokeObjectURL(settingsAudioUrl);
+      settingsAudioUrl = URL.createObjectURL(blob);
+      await new Audio(settingsAudioUrl).play();
+      renderSettingsSide(config, audioSettings);
+      updateSettingsSummary(config, audioSettings);
+      setStatus("语音试听已播放。", "ready");
+    } catch (err) {
+      setStatus(err.message, "error");
+    } finally {
+      testVoiceBtn.disabled = false;
+    }
+  });
+
+  $("assistantSettingsForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      await saveSettings();
     } catch (err) {
       setStatus(err.message, "error");
     }

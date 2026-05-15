@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import asyncio
@@ -601,6 +602,37 @@ def api_assistant_models():
         return jsonify({"error": f"模型列表请求失败：HTTP {exc.code} {detail}"}), 502
     except Exception as exc:
         return jsonify({"error": f"模型列表请求失败：{exc}"}), 502
+
+
+@app.route("/api/assistant_test", methods=["POST"])
+def api_assistant_test():
+    body = request.get_json() or {}
+    question = str(body.get("question") or "请用一句话介绍你当前使用的模型来源。").strip()
+    if len(question) < 2:
+        return jsonify({"error": "测试问题太短。"}), 400
+    started = time.perf_counter()
+    try:
+        result = _request_chat_completion(
+            [
+                {
+                    "role": "system",
+                    "content": "你是机器学习实验课的中文 AI 助教。回答要短，适合演示，不能使用 Markdown。",
+                },
+                {"role": "user", "content": question[:300]},
+            ],
+            max_tokens=120,
+        )
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        return jsonify({
+            "provider": result["provider"],
+            "model": result["model"],
+            "answer": result["content"],
+            "elapsed_ms": elapsed_ms,
+        })
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:
+        return jsonify({"error": f"模型测试失败：{exc}"}), 500
 
 
 @app.route("/api/tts", methods=["POST"])

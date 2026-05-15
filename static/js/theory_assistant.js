@@ -651,6 +651,13 @@
     rateInput.value = String(state.rate);
   }
 
+  function providerModelLabel(data) {
+    if (!data?.model) return "";
+    if (data.provider === "ollama") return `本地 Ollama · ${data.model}`;
+    if (data.provider === "external") return `外部 API · ${data.model}`;
+    return data.model;
+  }
+
   function stopAudio(message = "已停止。", options = {}) {
     const { cancelStream = true, keepDockSpeech = false } = options;
     if (cancelStream) {
@@ -785,7 +792,8 @@
       } else {
         await streamConversation(explainQuestion, visibleExplanation);
       }
-      setStatus(data.model ? `讲解已生成，模型：${data.model}` : "讲解已生成。");
+      const sourceLabel = providerModelLabel(data);
+      setStatus(sourceLabel ? `讲解已生成，来源：${sourceLabel}` : "讲解已生成。");
     } catch (err) {
       renderConversation(explainQuestion, `讲解生成失败：${err.message}`, { error: true });
       setStatus("可以先使用“朗读全文”。");
@@ -842,7 +850,8 @@
       } else {
         await streamConversation(cleanQuestion, visibleAnswer);
       }
-      setStatus(data.model ? `回答已生成，模型：${data.model}` : "回答已生成。");
+      const sourceLabel = providerModelLabel(data);
+      setStatus(sourceLabel ? `回答已生成，来源：${sourceLabel}` : "回答已生成。");
     } catch (err) {
       renderConversation(cleanQuestion, `问答失败：${err.message}`, { error: true });
       setStatus("可以换个问法，或先使用“智能页面讲解”。");
