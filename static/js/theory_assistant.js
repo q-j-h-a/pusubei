@@ -76,27 +76,8 @@
   shell.innerHTML = `
     <button class="theory-assistant-fab" id="theoryAssistantFab" type="button" aria-label="打开理论智能助手">
       <span class="digital-lecturer digital-lecturer-fab" aria-hidden="true">
-        <span class="lecturer-pulse lecturer-pulse-one"></span>
-        <span class="lecturer-pulse lecturer-pulse-two"></span>
-        <span class="lecturer-stage">
-          <span class="lecturer-avatar">
-            <span class="lecturer-head">
-              <span class="lecturer-hair"></span>
-              <span class="lecturer-eye lecturer-eye-left"></span>
-              <span class="lecturer-eye lecturer-eye-right"></span>
-              <span class="lecturer-mouth"></span>
-            </span>
-            <span class="lecturer-neck"></span>
-            <span class="lecturer-body">
-              <span class="lecturer-lapel lecturer-lapel-left"></span>
-              <span class="lecturer-lapel lecturer-lapel-right"></span>
-              <span class="lecturer-badge">AI</span>
-            </span>
-            <span class="lecturer-pointer"></span>
-          </span>
-          <span class="lecturer-wave lecturer-wave-one"></span>
-          <span class="lecturer-wave lecturer-wave-two"></span>
-          <span class="lecturer-wave lecturer-wave-three"></span>
+        <span class="lecturer-gif-stage">
+          <img class="lecturer-gif" src="/static/assets/digital-lecturer.gif" alt="" decoding="async">
         </span>
       </span>
     </button>
@@ -105,22 +86,8 @@
         <div class="theory-assistant-identity">
           <span class="theory-assistant-mark" aria-hidden="true">
             <span class="digital-lecturer digital-lecturer-mini" aria-hidden="true">
-              <span class="lecturer-stage">
-                <span class="lecturer-avatar">
-                  <span class="lecturer-head">
-                    <span class="lecturer-hair"></span>
-                    <span class="lecturer-eye lecturer-eye-left"></span>
-                    <span class="lecturer-eye lecturer-eye-right"></span>
-                    <span class="lecturer-mouth"></span>
-                  </span>
-                  <span class="lecturer-neck"></span>
-                  <span class="lecturer-body">
-                    <span class="lecturer-lapel lecturer-lapel-left"></span>
-                    <span class="lecturer-lapel lecturer-lapel-right"></span>
-                    <span class="lecturer-badge">AI</span>
-                  </span>
-                  <span class="lecturer-pointer"></span>
-                </span>
+              <span class="lecturer-gif-stage">
+                <img class="lecturer-gif" src="/static/assets/digital-lecturer.gif" alt="" loading="lazy" decoding="async">
               </span>
             </span>
           </span>
