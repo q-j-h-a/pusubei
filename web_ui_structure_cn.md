@@ -1,6 +1,6 @@
 # Web UI 结构说明
 
-本文档记录当前项目的页面结构、右侧控制面板、图表卡片和自主实验交互规则。入口文件为 `templates/index.html`，主要前端逻辑位于 `static/js/`。
+本文档记录当前项目的页面结构、右侧控制面板、图表卡片、自主实验、理论 AI 助教和设置页交互规则。入口文件为 `templates/index.html`，主要前端逻辑位于 `static/js/`。
 
 ## 1. 整体布局
 
@@ -27,7 +27,7 @@ body
 --assistant-width: 20%;
 ```
 
-左右栏拖拽由 `static/js/app_shell.js` 处理，宽度写入 `localStorage`。切换页面时，`setPage(page)` 会更新左侧导航、主内容区和右侧面板，并触发图表 resize。
+左右栏拖拽由 `static/js/app_shell.js` 处理，宽度写入 `localStorage`。切换页面时，`setPage(page)` 会更新左侧导航、主内容区和右侧面板，并触发图表 resize。理论页会给 `.shell` 添加 `theory` 状态并隐藏右侧控制栏；实验页和设置页会隐藏理论 AI 助教。
 
 ## 2. 左侧导航
 
@@ -45,11 +45,13 @@ aside.sidebar
 │  │  └─ 评价指标
 │  ├─ 预期成果
 │  └─ 思考拓展
-└─ 实验部分
-   ├─ 数据预处理
-   ├─ 模型训练与评估
-   ├─ 模型预测
-   └─ 自主实验
+├─ 实验部分
+│  ├─ 数据预处理
+│  ├─ 模型训练与评估
+│  ├─ 模型预测
+│  └─ 自主实验
+└─ 系统设置
+   └─ AI 助教设置
 ```
 
 导航按钮点击后调用：
@@ -78,7 +80,7 @@ main.main#main
       └─ iframe
 ```
 
-理论 HTML 位于 `static/theory-html/<page>.html`。
+理论 HTML 位于 `static/theory-html/<page>.html`。iframe 加载完成后，`theory_page.js` 会抽取当前理论页正文，调用 `window.TheoryAssistant.setPage()` 同步给 AI 助教，并调用 `attachSelectionTarget()` 绑定 iframe 内选中文本提问。
 
 ### 3.2 数据预处理页
 
@@ -125,7 +127,7 @@ renderDataShell()
       └─ 每轮参数表
 ```
 
-RMSE、MAE、R2 使用同一套训练页仪表盘样式。
+RMSE、MAE、R2 使用同一套训练页仪表盘样式。Loss 三维曲面依赖 `echarts-gl`。
 
 ### 3.4 模型预测页
 
@@ -169,6 +171,35 @@ RMSE、MAE、R2 使用同一套训练页仪表盘样式。
 04 模型预测
 ```
 
+### 3.6 AI 助教设置页
+
+文件：`static/js/settings_page.js`
+
+```text
+#main
+├─ section.settings-card.settings-hero
+└─ .settings-layout
+   ├─ section.settings-card
+   │  └─ form#assistantSettingsForm
+   │     ├─ .settings-section 模型配置
+   │     ├─ .settings-section 语音配置
+   │     └─ .settings-actions
+   └─ section.settings-card
+      ├─ #ollamaModelList
+      └─ #assistantTestResult
+```
+
+设置页功能：
+
+- 选择模型提供方：本地优先、Ollama、外部 OpenAI-compatible API。
+- 配置 Ollama base URL 和模型名。
+- 配置外部 API base URL、模型名和 API key。
+- 配置 TTS 提供方：Edge TTS、MeloTTS、CosyVoice、macOS 本地语音。
+- 读取 Ollama 模型列表。
+- 测试 AI 助教模型。
+- 测试听语音。
+- 保存配置到 `/api/assistant_config`，并同步更新 `window.TheoryAssistant.updateAudioSettings()`。
+
 ## 4. 右侧控制面板
 
 右侧挂载点：
@@ -178,7 +209,7 @@ aside.assistant
 └─ #rightPanel
 ```
 
-右侧面板由 `static/js/control_renderers.js` 生成。
+实验页右侧面板由 `static/js/control_renderers.js` 生成；设置页右侧摘要由 `settings_page.js` 生成。
 
 ### 4.1 数据预处理
 
@@ -244,7 +275,7 @@ aside.assistant
 - `02 数据预处理` 支持原始散点图、预处理散点图、单特征线性相关系数、全特征线性相关系数。
 - `03 模型训练与评估` 中，训练数据版本默认选择 `标准化特征`。
 - `03 模型训练与评估` 的状态徽标在初始和重置后为 `未训练`，训练一轮或自动训练后为 `已训练`。
-- `评估标准图` 是 3 个横向布置的仪表盘，样式与模型训练与评估页的 RMSE、MAE、R2 仪表盘保持一致。
+- `评估标准图` 是 3 个横向布局的仪表盘，样式与模型训练与评估页的 RMSE、MAE、R2 仪表盘保持一致。
 - `04 模型预测` 默认展开，右侧状态徽标初始为 `待预测`，预测成功后变为 `已预测`。
 - `04 模型预测` 右侧内容依次为当前模型、输入类型、输入特征值、显示图表、准备预测、开始预测。
 - 自主实验预测默认展示 `预测可视化` 和 `预测计算过程` 两张图，与模型预测页保持一致。
@@ -280,7 +311,49 @@ aside.assistant
 └─ 开始预测
 ```
 
-## 5. 图表卡片与交互
+## 5. 理论 AI 助教
+
+文件：`static/js/theory_assistant.js`
+
+理论 AI 助教只在理论页显示，实验页和设置页由 `app_shell.js` 调用 `TheoryAssistant.hide()` 隐藏。
+
+```text
+body
+├─ .theory-assistant-dock#theoryAssistantDock
+│  ├─ .theory-assistant-quick
+│  │  ├─ #theoryQuickExplain
+│  │  └─ #theoryQuickAsk
+│  ├─ .theory-audio-controls
+│  │  ├─ #theoryFabPauseBtn
+│  │  ├─ #theoryFabResumeBtn
+│  │  └─ #theoryFabStopBtn
+│  ├─ #theoryDockSpeech
+│  └─ button#theoryAssistantFab
+├─ button#theorySelectionHelp
+└─ section#theoryAssistantPanel
+   ├─ .theory-assistant-head
+   ├─ .theory-live-stage
+   ├─ #theoryAssistantBody
+   ├─ .theory-assistant-actions
+   │  ├─ #theoryExplainBtn
+   │  └─ #theoryReadBtn
+   ├─ .theory-assistant-ask
+   │  ├─ #theoryQuestionInput
+   │  └─ #theoryAskBtn
+   ├─ .theory-assistant-control
+   └─ .theory-assistant-voice
+```
+
+主要能力：
+
+- `解释当前页`：调用 `/api/theory_explain`，把当前理论页标题和正文发给后端。
+- `追问`：调用 `/api/theory_chat`，携带当前页、最近对话和最近访问的理论页上下文。
+- `朗读当前页`：调用 `/api/tts` 合成语音并播放。
+- `选中文本提问`：在理论 iframe 内选中文本后出现快捷按钮，作为问题上下文发送给 AI。
+- `播放控制`：支持暂停、继续、停止；播放状态会影响数字讲师动图和悬浮口播气泡。
+- `语音配置`：语音提供方、音色和语速保存在 `localStorage`，设置页保存后会同步更新。
+
+## 6. 图表卡片与交互
 
 图表卡片统一由 `static/js/view_renderers.js` 的 `chartCardHtml()` 生成：
 
@@ -330,7 +403,9 @@ student    -> studentGridLayoutV1
 studentPredictSelectedViewsV2
 ```
 
-## 6. 数据流
+## 7. 数据流
+
+### 7.1 实验图表数据流
 
 ```text
 右侧控制面板
@@ -346,26 +421,60 @@ studentPredictSelectedViewsV2
   -> ECharts 渲染到 .chart#chart_xxx
 ```
 
-## 7. 关键文件职责
+### 7.2 理论助教数据流
+
+```text
+theory_page.js 读取 iframe 正文
+  -> TheoryAssistant.setPage({ id, title, text })
+  -> 用户点击讲解 / 追问 / 朗读 / 选中文本提问
+  -> POST /api/theory_explain 或 /api/theory_chat
+  -> app.py 调用 Ollama 或外部 OpenAI-compatible API
+  -> 前端展示回答并按需调用 /api/tts
+  -> app.py 调用 Edge TTS / macOS say / MeloTTS / CosyVoice
+  -> 前端 Audio 播放
+```
+
+### 7.3 设置页数据流
+
+```text
+settings_page.js
+  -> GET /api/assistant_config
+  -> 渲染模型和语音配置
+  -> POST /api/assistant_config 保存配置
+  -> GET /api/assistant_models 读取 Ollama 模型列表
+  -> POST /api/assistant_test 测试模型连通性
+  -> POST /api/tts 测试听语音
+```
+
+## 8. 关键文件职责
 
 ```text
 templates/index.html
-  页面骨架、基础 CSS、左右侧栏、主内容区和右侧控制面板挂载点
+  页面骨架、基础 CSS、左侧导航、主内容区、右侧控制面板、设置页样式、AI 助教样式和脚本加载
 
 static/js/app_shell.js
-  页面切换、导航状态、左右栏拖拽、全局 resize
+  页面切换、导航状态、左右栏拖拽、理论/实验/设置页状态切换、全局 resize
 
 static/js/state_runtime.js
   GridStack 初始化、布局存储、视图选择存储、图表 resize
 
 static/js/control_renderers.js
-  右侧控制面板渲染
+  实验页右侧控制面板渲染
 
 static/js/view_renderers.js
   主内容区图表卡片、表格、计算过程 HTML 渲染
 
 static/js/chart_renderers.js
-  ECharts option 渲染
+  ECharts / ECharts GL option 渲染
+
+static/js/theory_page.js
+  理论页 iframe 加载、理论文本抽取、AI 助教上下文同步
+
+static/js/theory_assistant.js
+  理论页浮动 AI 助教、语音播放、对话、选中文本提问
+
+static/js/settings_page.js
+  AI 助教模型配置、语音配置、模型列表、模型测试、语音试听
 
 static/js/student_page.js
   自主实验 4 阶段流程、训练帧切换、预测准备与预测执行
@@ -378,4 +487,10 @@ models/simple_linear_regression/controls/student.py
 
 models/simple_linear_regression/charts/student/
   自主实验各图表数据构造
+
+app.py
+  Flask 入口、实验 API、AI 助教配置、模型调用、TTS 合成
+
+tools/
+  MeloTTS 和 CosyVoice 本地语音服务辅助脚本与说明
 ```
