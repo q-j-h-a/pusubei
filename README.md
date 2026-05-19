@@ -196,3 +196,35 @@ node --check static/js/app_shell.js
 ```
 
 只有选择显示模块后才渲染图表；再次进入对应步骤时会恢复已选择的模块和图表状态。
+
+## 当前理论部分合并约定
+
+理论部分已以当前项目为主框架，合并来自 `111` 项目的课件化展示能力，但不再保留 `111` 文件夹。
+
+当前理论页由 `static/js/theory_page.js` 渲染，支持：
+
+- 理论主题课件式幻灯片展示。
+- 查看对应的静态理论详情 HTML。
+- 课件编辑、组件拖拽、文字样式调整和本地保存。
+- 通过 `html2pdf` 导出课件 PDF。
+
+理论静态正文仍放在：
+
+```text
+static/theory-html/
+```
+
+本次合并明确不包含已废弃的理论助手功能，因此项目中不需要接入以下内容：
+
+```text
+theory_assistant.js
+settings_page.js
+student_page.js
+/api/theory_chat
+/api/theory_explain
+/api/assistant_config
+/api/tts
+/api/local_tts
+```
+
+后端 `app.py` 仍只保留实验框架所需 API，理论课件功能主要在前端完成。

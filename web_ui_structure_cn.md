@@ -415,3 +415,99 @@ python -m compileall app.py core models
 - `preprocessFormStateV1`：当前选择的特征。
 - `rawVizSelectedViewsV1`：原始数据可视化已选显示模块。
 - `standardVizSelectedViewsV1`：标准数据可视化已选显示模块。
+
+## 11. 当前理论课件结构
+
+理论部分以当前项目的页面壳、左侧导航和主内容区为基准，只合并 `111` 项目中的课件化展示能力，不合并废弃的理论助手。
+
+理论页入口仍由左侧导航触发：
+
+```text
+button.nav-btn click -> setPage(btn.dataset.page) -> renderTheory(page)
+```
+
+当前理论页主要由以下文件负责：
+
+```text
+static/js/theory_page.js
+templates/index.html
+static/theory-html/
+```
+
+### 11.1 课件模式
+
+默认进入理论导航时，中间主内容区渲染课件模式：
+
+```text
+#main
+└── section.theory-deck-shell#theoryDeck
+    ├── nav.theory-deck-toolbar
+    ├── .theory-editor-tools
+    └── .theory-slide-viewport
+        └── .theory-slide
+            └── .theory-component
+```
+
+课件模式支持：
+
+- 上一页 / 下一页切换。
+- 编辑课件内容。
+- 拖拽和缩放课件组件。
+- 插入文本、卡片、列表、提示、公式和图片。
+- 保存到浏览器 `localStorage`。
+- 通过 `html2pdf` 导出 PDF。
+
+### 11.2 理论详情模式
+
+课件工具栏中的详情按钮会切换到静态理论 HTML：
+
+```text
+#main
+├── .theory-detail-toolbar
+└── .html-lesson[data-theory-html]
+    └── iframe
+```
+
+静态理论正文路径：
+
+```text
+static/theory-html/<page>.html
+```
+
+当前已有页面包括：
+
+```text
+basic
+purpose
+knowledge
+dataset
+model
+criterion
+optimization
+evaluation
+result
+thinking
+```
+
+### 11.3 不再同步的理论助手
+
+本项目不再同步 `111` 中废弃的理论助手能力。以下文件、资源和接口不属于当前项目框架：
+
+```text
+static/js/theory_assistant.js
+static/js/settings_page.js
+static/js/student_page.js
+static/assets/assistant-avatar.svg
+static/assets/digital-lecturer-static.png
+static/assets/digital-lecturer.gif
+static/assets/trainee-avatar.svg
+/api/theory_chat
+/api/theory_explain
+/api/assistant_config
+/api/assistant_models
+/api/assistant_test
+/api/tts
+/api/local_tts
+```
+
+因此 `app.py` 不需要合并 `111` 中的理论助手、TTS、大模型配置或设置页相关后端逻辑。
