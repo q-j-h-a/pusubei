@@ -9,21 +9,29 @@ async function renderPredictShell() {
     sections: []
   });
   document.querySelector(".shell").classList.remove("theory");
+  predictData = null;
+  predictRawScatterData = null;
+  predictRawScatterKey = "";
+  predictRenderViewsKey = "";
   $("main").innerHTML = `<div class="dashboard-grid grid-stack" id="predictWrap"></div>`;
   $("rightPanel").innerHTML = renderPredictPanel();
+  bindPredictCodeButtons();
   syncPredictPanelWithTrainModel();
   $("predictRun")?.addEventListener("click", loadPrediction);
-  $("predictInputMode")?.addEventListener("change", loadPrediction);
+  $("predictInputMode")?.addEventListener("change", persistPredictFormState);
+  $("predictInput")?.addEventListener("input", persistPredictFormState);
   $("predictInput")?.addEventListener("keydown", event => {
     if (event.key === "Enter") loadPrediction();
   });
   restorePredictFormState();
+  await resetPredictionPendingState();
 }
 
 function renderPredictPanel() {
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
-    <div class="control-card">
+    <div class="control-card predict-control-card">
+      <h3>\u6a21\u578b\u9884\u6d4b</h3>
       <div class="mini-stats">
         <div class="mini-stat"><span>\u9884\u6d4b MEDV</span><strong id="predictValue">--</strong></div>
         <div class="mini-stat"><span>\u6a21\u578b\u8f93\u5165 x</span><strong id="predictModelX">--</strong></div>
@@ -48,12 +56,13 @@ function renderPredictPanel() {
             </select>
           </label>
           <label class="control-label" for="predictInput">\u8f93\u5165\u7279\u5f81\u503c
-            <input id="predictInput" type="number" value="6.5" step="0.1">
+            <input id="predictInput" type="text" inputmode="decimal" value="6.5" autocomplete="off">
           </label>
         </div>
       </div>
-      <div class="btn-row">
+      <div class="predict-actions">
         <button class="primary-btn" id="predictRun" type="button">\u5f00\u59cb\u9884\u6d4b</button>
+        ${predictCodeButtonHtml()}
       </div>
     </div>`;
 }
@@ -76,6 +85,22 @@ function restorePredictFormState() {
     el.value = state[id];
   });
   syncPredictPanelWithTrainModel();
+}
+
+async function resetPredictionPendingState() {
+  persistPredictFormState();
+  predictData = null;
+  predictRawScatterData = null;
+  predictRawScatterKey = "";
+  predictRenderViewsKey = "";
+  if ($("predictValue")) $("predictValue").textContent = "--";
+  if ($("predictModelX")) $("predictModelX").textContent = "--";
+  syncPredictPanelWithTrainModel();
+  if (!currentTrainPredictionState()) {
+    predictEmptyState();
+    return;
+  }
+  await renderPredictBaseCharts();
 }
 
 function restorePredictionView() {
@@ -141,24 +166,12 @@ function syncPredictPanelWithTrainModel() {
   }
   if (runEl) runEl.disabled = false;
   if (statusEl) {
-    statusEl.className = "model-status-grid";
+    statusEl.className = "predict-model-plain";
     statusEl.innerHTML = `
-      <div class="model-status-main">
-        <span>\u8bad\u7ec3\u6765\u6e90</span>
-        <strong>\u81ea\u5b9a\u4e49\u53c2\u6570\u8bad\u7ec3 epoch ${escapeHtml(state.frame.epoch)}</strong>
-      </div>
-      <div class="model-status-pair">
-        <span>\u7279\u5f81</span>
-        <strong>${escapeHtml(state.feature)}</strong>
-      </div>
-      <div class="model-status-pair">
-        <span>\u6a21\u578b\u8f93\u5165</span>
-        <strong>${escapeHtml(state.useStandardized ? "\u6807\u51c6\u5316\u7279\u5f81" : "\u539f\u59cb\u7279\u5f81")}</strong>
-      </div>
-      <div class="model-param-row">
-        <div><span>w</span><strong>${Number(state.frame.w).toFixed(6)}</strong></div>
-        <div><span>b</span><strong>${Number(state.frame.b).toFixed(6)}</strong></div>
-      </div>`;
+      <div><span>\u6765\u6e90\uff1a</span><strong>\u81ea\u5b9a\u4e49\u53c2\u6570\u8bad\u7ec3</strong></div>
+      <div><span>\u7279\u5f81\uff1a</span><strong>${escapeHtml(state.feature)}</strong></div>
+      <div><span>w = </span><strong>${Number(state.frame.w).toFixed(6)}</strong></div>
+      <div><span>b = </span><strong>${Number(state.frame.b).toFixed(6)}</strong></div>`;
   }
 }
 
@@ -201,12 +214,15 @@ function predictEmptyState() {
 }
 
 async function ensurePredictRawScatterData() {
-  if (!predictData) return null;
-  const key = `${predictData.dataset_id || currentDatasetMeta?.dataset_id || "boston_housing"}|${predictData.feature}`;
+  const trainState = currentTrainPredictionState();
+  const feature = predictData?.feature || trainState?.feature;
+  if (!feature) return null;
+  const datasetId = predictData?.dataset_id || currentDatasetMeta?.dataset_id || "boston_housing";
+  const key = `${datasetId}|${feature}`;
   if (predictRawScatterData && predictRawScatterKey === key) return predictRawScatterData;
   const raw = await runAction("prepare_train", {
-    feature: predictData.feature,
-    dataset_id: predictData.dataset_id || currentDatasetMeta?.dataset_id || "boston_housing",
+    feature,
+    dataset_id: datasetId,
     use_standardized: false,
     learning_rate: 0.03,
     epochs: 1,
@@ -216,6 +232,53 @@ async function ensurePredictRawScatterData() {
   predictRawScatterData = raw;
   predictRawScatterKey = key;
   return raw;
+}
+
+async function renderPredictBaseCharts() {
+  const trainState = currentTrainPredictionState();
+  if (!trainState) {
+    predictEmptyState();
+    return;
+  }
+  $("topFeature").textContent = `\u5f53\u524d\u7279\u5f81 ${trainState.feature}`;
+  await ensurePredictRawScatterData();
+  const grid = ensurePredictGrid();
+  const viewsKey = "predict_base_v1";
+  if (predictRenderViewsKey !== viewsKey || !charts.get("chart_predict_standard") || !charts.get("chart_predict_raw") || !$("predictCalcCard")) {
+    destroyDataGrid();
+    disposeCharts();
+    dataGridMode = "predict";
+    grid.innerHTML = predictGridHtml();
+    if (window.GridStack) {
+      dataGrid = GridStack.init({
+        column: 4,
+        cellHeight: 260,
+        margin: 8,
+        float: true,
+        animate: true,
+        draggable: { handle: ".chart-head" },
+        resizable: { handles: "e, s, se" }
+      }, grid);
+      grid.setAttribute("gs-column", "4");
+      updateDataGridCellHeight();
+      dataGrid.on("change dragstop resizestop", () => {
+        syncDataGridAttributes();
+        saveDataGridLayout();
+        requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+      });
+      syncDataGridAttributes();
+    }
+    predictRenderViewsKey = viewsKey;
+  }
+
+  const standard = charts.get("chart_predict_standard") || initChart("chart_predict_standard");
+  standard.setOption(predictStandardBaseOption(), true);
+
+  const raw = charts.get("chart_predict_raw") || initChart("chart_predict_raw");
+  raw.setOption(predictRawBaseOption(), true);
+
+  updatePredictCalcCard();
+  requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
 }
 
 function renderPredictCharts() {
@@ -325,6 +388,28 @@ function predictStandardOption() {
   };
 }
 
+function predictStandardBaseOption() {
+  const trainState = currentTrainPredictionState();
+  const frame = trainState?.frame || {};
+  const points = trainData.scatter.x.map((x, i) => [x, trainData.scatter.y[i]]);
+  const lineData = trainData.line_x.map(x => [x, Number(frame.w) * x + Number(frame.b)]);
+  return {
+    tooltip: { trigger: "item" },
+    legend: { top: 12 },
+    grid: { left: 58, right: 24, top: 56, bottom: 48 },
+    xAxis: { type: "value", name: trainData.x_column, nameLocation: "middle", nameGap: 28 },
+    yAxis: { type: "value", name: `${trainData.target || "MEDV"}(std)`, nameLocation: "middle", nameGap: 38 },
+    dataZoom: [
+      { type: "inside", xAxisIndex: 0, filterMode: "none" },
+      { type: "inside", yAxisIndex: 0, filterMode: "none" }
+    ],
+    series: [
+      { name: "\u6837\u672c\u70b9", type: "scatter", data: points, symbolSize: 6, itemStyle: { color: "rgba(15,159,120,.62)" } },
+      { name: "\u5f53\u524d\u56de\u5f52\u7ebf", type: "line", data: lineData, showSymbol: false, lineStyle: { color: "#0f9f78", width: 3 } }
+    ]
+  };
+}
+
 function predictRawOption() {
   const raw = predictRawScatterData;
   const points = raw?.scatter?.x?.map((x, i) => [x, raw.scatter.y[i]]) || [];
@@ -346,6 +431,26 @@ function predictRawOption() {
   };
 }
 
+function predictRawBaseOption() {
+  const raw = predictRawScatterData;
+  const trainState = currentTrainPredictionState();
+  const points = raw?.scatter?.x?.map((x, i) => [x, raw.scatter.y[i]]) || [];
+  return {
+    tooltip: { trigger: "item" },
+    legend: { top: 12 },
+    grid: { left: 58, right: 24, top: 56, bottom: 48 },
+    xAxis: { type: "value", name: trainState?.feature || DEFAULT_FEATURE, nameLocation: "middle", nameGap: 28 },
+    yAxis: { type: "value", name: raw?.target || trainData?.target || "MEDV", nameLocation: "middle", nameGap: 38 },
+    dataZoom: [
+      { type: "inside", xAxisIndex: 0, filterMode: "none" },
+      { type: "inside", yAxisIndex: 0, filterMode: "none" }
+    ],
+    series: [
+      { name: "\u539f\u59cb\u6837\u672c\u70b9", type: "scatter", data: points, symbolSize: 6, itemStyle: { color: "rgba(37,99,235,.58)" } }
+    ]
+  };
+}
+
 function updatePredictCalcCard() {
   const slot = $("predictCalcCard");
   if (!slot) return;
@@ -353,6 +458,23 @@ function updatePredictCalcCard() {
 }
 
 function predictCalcCardHtml() {
+  if (!predictData) {
+    return `<section class="chart-card wide">
+      <div class="chart-head">
+        <div><div class="chart-title">\u9884\u6d4b\u8ba1\u7b97\u8fc7\u7a0b</div><div class="chart-sub">\u8f93\u5165\u503c\u3001\u6807\u51c6\u5316\u6362\u7b97\u3001\u6a21\u578b\u4ee3\u5165\u548c\u9884\u6d4b\u8f93\u51fa</div></div>
+      </div>
+      <div style="padding:18px">
+        <div class="formula">请在右侧输入特征值，然后点击“开始预测”。
+
+点击后这里会展示：
+1. 读取输入
+2. 换算为模型输入
+3. 代入线性回归模型
+4. 还原为原始 MEDV
+5. 图中预测点对应位置</div>
+      </div>
+    </section>`;
+  }
   const modelType = predictData.use_standardized ? "\u6807\u51c6\u5316\u7279\u5f81" : "\u539f\u59cb\u7279\u5f81";
   const conversion = predictData.use_standardized
     ? `x_std = (x_raw - mean) / std = (${num(predictData.raw_value, 6)} - ${num(predictData.mean, 6)}) / ${num(predictData.std, 6)} = ${num(predictData.model_x, 6)}`
@@ -396,4 +518,130 @@ function predictModelPrediction() {
 
 function predictDisplayPrediction() {
   return Number(predictData?.prediction_raw ?? predictData?.prediction ?? 0);
+}
+
+function predictCodeButtonHtml() {
+  return `<button class="secondary-btn code-toggle-btn" type="button" data-predict-code="predict">查看预测代码</button>`;
+}
+
+function predictCodeSpec() {
+  const trainState = currentTrainPredictionState();
+  const feature = predictData?.feature || trainState?.feature || trainData?.feature || DEFAULT_FEATURE;
+  const target = predictData?.target || trainData?.target || "MEDV";
+  const inputMode = $("predictInputMode")?.value || predictData?.input_mode || "raw";
+  const inputValue = $("predictInput")?.value || predictData?.input_value || "6.5";
+  const frame = trainState?.frame || {};
+  const w = predictData?.w ?? frame.w;
+  const b = predictData?.b ?? frame.b;
+  const mean = predictData?.mean;
+  const std = predictData?.std;
+  const targetMean = predictData?.target_mean;
+  const targetStd = predictData?.target_std;
+  const hasPrediction = Boolean(predictData);
+  const rawToStd = inputMode === "standardized"
+    ? "x_std = x_input"
+    : "x_std = (x_input - feature_mean) / feature_std";
+  const code = [
+    `feature = "${feature}"`,
+    `target = "${target}"`,
+    `input_mode = "${inputMode}"`,
+    `x_input = ${inputValue}`,
+    "",
+    `w = ${Number.isFinite(Number(w)) ? num(w, 6) : "w"}`,
+    `b = ${Number.isFinite(Number(b)) ? num(b, 6) : "b"}`,
+    "",
+    "# 1. 使用训练时相同的统计量处理新输入",
+    `feature_mean = ${Number.isFinite(Number(mean)) ? num(mean, 6) : "training_feature_mean"}`,
+    `feature_std = ${Number.isFinite(Number(std)) ? num(std, 6) : "training_feature_std"}`,
+    rawToStd,
+    "",
+    "# 2. 在线性回归模型中预测",
+    "y_pred_std = w * x_std + b",
+    "",
+    "# 3. 如果训练目标也做过标准化，需要反标准化回 MEDV 原始尺度",
+    `target_mean = ${Number.isFinite(Number(targetMean)) ? num(targetMean, 6) : "training_target_mean"}`,
+    `target_std = ${Number.isFinite(Number(targetStd)) ? num(targetStd, 6) : "training_target_std"}`,
+    "y_pred_raw = y_pred_std * target_std + target_mean",
+    "",
+    ...(hasPrediction ? [
+      `# 当前模型输入 x_std = ${num(predictData.model_x, 6)}`,
+      `# 当前标准化预测 y_pred_std = ${num(predictModelPrediction(), 6)}`,
+      `# 当前原始尺度预测 MEDV = ${num(predictDisplayPrediction(), 6)}`,
+    ] : [
+      "# 点击“开始预测”后，这里会显示当前预测结果。",
+    ]),
+  ].join("\n");
+  return {
+    title: "模型预测",
+    operation: `把 ${feature} 的新输入代入当前模型，并还原为 ${target} 原始尺度`,
+    code,
+    notes: [
+      "预测新样本时，必须使用训练阶段保存下来的 mean 和 std。",
+      "如果输入是原始特征值，先转换为模型使用的标准化输入 x_std。",
+      "模型先输出标准化目标值 y_pred_std。",
+      `最后使用 ${target} 的均值和标准差，把预测值还原到原始尺度。`,
+    ],
+  };
+}
+
+function predictCodeDrawerHtml(spec) {
+  const notes = spec.notes.map((note, index) => `<li>${index + 1}. ${escapeHtml(note)}</li>`).join("");
+  return `
+    <div class="code-drawer-backdrop">
+      <aside class="code-drawer" role="dialog" aria-modal="true" aria-label="预测代码">
+        <div class="code-drawer-head">
+          <div>
+            <div class="code-kicker">当前预测代码</div>
+            <h2>${escapeHtml(spec.title)}</h2>
+          </div>
+          <button class="icon-btn code-close-btn" type="button" data-code-close="true" aria-label="关闭代码面板">x</button>
+        </div>
+        <div class="code-operation">
+          <span>当前操作</span>
+          <strong>${escapeHtml(spec.operation)}</strong>
+        </div>
+        <div class="code-block-head">
+          <span>核心代码</span>
+          <button class="secondary-btn code-copy-btn" type="button">复制代码</button>
+        </div>
+        <pre class="teaching-code"><code>${escapeHtml(spec.code)}</code></pre>
+        <div class="code-explain">
+          <h3>代码解释</h3>
+          <ol>${notes}</ol>
+        </div>
+      </aside>
+    </div>`;
+}
+
+function openPredictCodeDrawer() {
+  closePredictCodeDrawer();
+  document.body.insertAdjacentHTML("beforeend", predictCodeDrawerHtml(predictCodeSpec()));
+  const drawer = document.querySelector(".code-drawer-backdrop");
+  drawer?.addEventListener("click", event => {
+    if (!event.target.closest("[data-code-close]")) return;
+    closePredictCodeDrawer();
+  });
+  drawer?.querySelector(".code-copy-btn")?.addEventListener("click", async event => {
+    const code = drawer.querySelector(".teaching-code code")?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(code);
+      event.currentTarget.textContent = "已复制";
+      setTimeout(() => { event.currentTarget.textContent = "复制代码"; }, 1200);
+    } catch (_err) {
+      event.currentTarget.textContent = "复制失败";
+    }
+  });
+}
+
+function closePredictCodeDrawer() {
+  document.querySelector(".code-drawer-backdrop")?.remove();
+}
+
+function bindPredictCodeButtons() {
+  if (window.predictCodeButtonsBound) return;
+  window.predictCodeButtonsBound = true;
+  document.addEventListener("click", event => {
+    if (!event.target.closest("[data-predict-code]")) return;
+    openPredictCodeDrawer();
+  });
 }

@@ -12,7 +12,13 @@ function evaluateMetricMode() {
 }
 
 function evaluatePanelHtml() {
-  return `<div class="right-title">\u63a7\u5236\u9762\u677f</div>`;
+  return `
+    <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    <div class="control-card dataset-load-card">
+      <h3>\u8bc4\u4f30\u6307\u6807\u4ee3\u7801</h3>
+      <p class="control-help-text">\u67e5\u770b RMSE\u3001MAE \u548c R\u00b2 \u7684\u8ba1\u7b97\u903b\u8f91\uff0c\u4ee3\u7801\u4f1a\u540c\u6b65\u5f53\u524d\u6307\u6807\u548c\u8bad\u7ec3\u5e27\u3002</p>
+      ${evaluateCodeButtonHtml()}
+    </div>`;
 }
 
 function defaultEvaluateGridLayout(view) {
@@ -47,6 +53,7 @@ async function renderEvaluateShell() {
   });
   document.querySelector(".shell").classList.remove("theory");
   $("rightPanel").innerHTML = evaluatePanelHtml();
+  bindEvaluateCodeButtons();
   if (!trainData) {
     evaluateEmptyState();
     return;
@@ -258,4 +265,119 @@ function evaluateQuality(frame) {
   if (r2 >= 0.7) return "\u62df\u5408\u8f83\u597d";
   if (r2 >= 0.3) return "\u62df\u5408\u4e00\u822c";
   return "\u62df\u5408\u8f83\u5f31";
+}
+
+function evaluateCodeButtonHtml() {
+  return `<button class="secondary-btn code-toggle-btn" type="button" data-evaluate-code="metrics">查看评估代码</button>`;
+}
+
+function evaluateCodeSpec() {
+  const mode = evaluateMetricMode();
+  const frame = trainData?.history?.[evaluateFrameIndex()] || {};
+  const feature = trainData?.feature || DEFAULT_FEATURE;
+  const target = trainData?.target || "MEDV";
+  const metricLabel = EVALUATE_METRICS.find(item => item.id === mode)?.label || "RMSE";
+  const value = mode === "rmse" ? frame.rmse : mode === "mae" ? frame.mae : frame.r2;
+  const metricCode = {
+    rmse: [
+      "mse = np.mean((y - y_pred) ** 2)",
+      "rmse = np.sqrt(mse)",
+      `# current_rmse = ${Number.isFinite(Number(value)) ? num(value, 6) : "--"}`,
+    ],
+    mae: [
+      "mae = np.mean(np.abs(y - y_pred))",
+      `# current_mae = ${Number.isFinite(Number(value)) ? num(value, 6) : "--"}`,
+    ],
+    r2: [
+      "ss_res = np.sum((y - y_pred) ** 2)",
+      "ss_tot = np.sum((y - np.mean(y)) ** 2)",
+      "r2 = 1 - ss_res / ss_tot",
+      `# current_r2 = ${Number.isFinite(Number(value)) ? num(value, 6) : "--"}`,
+    ],
+  }[mode];
+  return {
+    title: `模型评估：${metricLabel}`,
+    operation: `计算当前模型在 ${feature} -> ${target} 上的 ${metricLabel} 指标`,
+    code: [
+      `feature = "${feature}"`,
+      `target = "${target}"`,
+      "",
+      "x = scaled_data[feature]",
+      "y = scaled_data[target]",
+      "",
+      `w = ${Number.isFinite(Number(frame.w)) ? num(frame.w, 6) : "w"}`,
+      `b = ${Number.isFinite(Number(frame.b)) ? num(frame.b, 6) : "b"}`,
+      "y_pred = w * x + b",
+      "",
+      ...metricCode,
+    ].join("\n"),
+    notes: [
+      "评估页复用当前训练页得到的 w、b 和当前训练帧。",
+      "RMSE 是 MSE 开平方，单位和目标值一致。",
+      "MAE 是平均绝对误差，对异常点没有 RMSE 那么敏感。",
+      "R² 衡量模型相比“直接预测平均值”提升了多少。",
+    ],
+  };
+}
+
+function evaluateCodeDrawerHtml(spec) {
+  const notes = spec.notes.map((note, index) => `<li>${index + 1}. ${escapeHtml(note)}</li>`).join("");
+  return `
+    <div class="code-drawer-backdrop">
+      <aside class="code-drawer" role="dialog" aria-modal="true" aria-label="评估代码">
+        <div class="code-drawer-head">
+          <div>
+            <div class="code-kicker">当前评估代码</div>
+            <h2>${escapeHtml(spec.title)}</h2>
+          </div>
+          <button class="icon-btn code-close-btn" type="button" data-code-close="true" aria-label="关闭代码面板">x</button>
+        </div>
+        <div class="code-operation">
+          <span>当前操作</span>
+          <strong>${escapeHtml(spec.operation)}</strong>
+        </div>
+        <div class="code-block-head">
+          <span>核心代码</span>
+          <button class="secondary-btn code-copy-btn" type="button">复制代码</button>
+        </div>
+        <pre class="teaching-code"><code>${escapeHtml(spec.code)}</code></pre>
+        <div class="code-explain">
+          <h3>代码解释</h3>
+          <ol>${notes}</ol>
+        </div>
+      </aside>
+    </div>`;
+}
+
+function openEvaluateCodeDrawer() {
+  closeEvaluateCodeDrawer();
+  document.body.insertAdjacentHTML("beforeend", evaluateCodeDrawerHtml(evaluateCodeSpec()));
+  const drawer = document.querySelector(".code-drawer-backdrop");
+  drawer?.addEventListener("click", event => {
+    if (!event.target.closest("[data-code-close]")) return;
+    closeEvaluateCodeDrawer();
+  });
+  drawer?.querySelector(".code-copy-btn")?.addEventListener("click", async event => {
+    const code = drawer.querySelector(".teaching-code code")?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(code);
+      event.currentTarget.textContent = "已复制";
+      setTimeout(() => { event.currentTarget.textContent = "复制代码"; }, 1200);
+    } catch (_err) {
+      event.currentTarget.textContent = "复制失败";
+    }
+  });
+}
+
+function closeEvaluateCodeDrawer() {
+  document.querySelector(".code-drawer-backdrop")?.remove();
+}
+
+function bindEvaluateCodeButtons() {
+  if (window.evaluateCodeButtonsBound) return;
+  window.evaluateCodeButtonsBound = true;
+  document.addEventListener("click", event => {
+    if (!event.target.closest("[data-evaluate-code]")) return;
+    openEvaluateCodeDrawer();
+  });
 }

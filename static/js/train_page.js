@@ -553,7 +553,256 @@ function renderTrainButtons() {
       <button class="btn green" id="autoBtn" type="button">\u81ea\u52a8\u6f14\u793a</button>
       <button class="btn dark" id="pauseBtn" type="button">\u6682\u505c</button>
       <button class="btn rose" id="resetBtn" type="button">\u91cd\u7f6e</button>
+    </div>
+    ${trainCodeButtonHtml(activeTrainStep)}`;
+}
+
+function trainCodeButtonHtml(stepId) {
+  return `<button class="secondary-btn code-toggle-btn" type="button" data-train-code="${escapeHtml(stepId || "process")}">查看本步骤代码</button>`;
+}
+
+function trainCurrentParams() {
+  const defaults = trainStepDefaults();
+  const feature = $("trainFeature")?.value
+    || viewStateStore.trainFormStateV1?.trainFeature
+    || defaults.trainFeature
+    || DEFAULT_FEATURE;
+  return {
+    feature,
+    target: currentDatasetMeta?.target || "MEDV",
+    w: $("w0")?.value || defaults.w0 || "0",
+    b: $("b0")?.value || defaults.b0 || "0",
+    lr: $("lr")?.value || defaults.lr || "0.030",
+    epochs: $("epochs")?.value || defaults.epochs || "100",
+    useStandardized: trainUseStandardized(),
+    frame: trainData?.history?.[currentFrame] || trainData?.history?.[0] || null,
+  };
+}
+
+function trainFrameValue(frame, key, fallback) {
+  const value = Number(frame?.[key]);
+  return Number.isFinite(value) ? num(value, 6) : fallback;
+}
+
+function trainCodeSpec(stepId) {
+  const params = trainCurrentParams();
+  const frame = params.frame;
+  const w = trainFrameValue(frame, "w", params.w);
+  const b = trainFrameValue(frame, "b", params.b);
+  const dw = trainFrameValue(frame, "dw", "dw");
+  const db = trainFrameValue(frame, "db", "db");
+  const newW = trainFrameValue(frame, "new_w", "w - learning_rate * dw");
+  const newB = trainFrameValue(frame, "new_b", "b - learning_rate * db");
+  const loss = trainFrameValue(frame, "loss", "mse");
+
+  const specs = {
+    process: {
+      title: "熟悉回归过程",
+      operation: "用当前 w 和 b 计算预测值、损失和下一步参数",
+      code: [
+        `feature = "${params.feature}"`,
+        `x = scaled_data[feature]`,
+        `y = scaled_data["${params.target}"]`,
+        "",
+        `w = ${params.w}`,
+        `b = ${params.b}`,
+        `learning_rate = ${params.lr}`,
+        `epochs = ${params.epochs}`,
+        "",
+        "for epoch in range(epochs):",
+        "    y_pred = w * x + b",
+        "    error = y_pred - y",
+        "    loss = np.mean(error ** 2)",
+        "",
+        "    dw = 2 * np.mean(error * x)",
+        "    db = 2 * np.mean(error)",
+        "",
+        "    w = w - learning_rate * dw",
+        "    b = b - learning_rate * db",
+      ].join("\n"),
+      notes: [
+        "y_pred = w * x + b 对应图中的回归直线。",
+        "loss 使用 MSE，表示所有样本预测误差平方后的平均值。",
+        "dw 和 db 是损失函数在 w、b 方向上的坡度。",
+        "参数沿负梯度方向更新，让损失逐步下降。",
+      ],
+    },
+    preprocess_effect: {
+      title: "熟悉预处理影响",
+      operation: "用相同参数对比原始特征和标准化特征的训练差异",
+      code: [
+        `feature = "${params.feature}"`,
+        `target = "${params.target}"`,
+        "",
+        "x_raw = data[feature]",
+        "y_raw = data[target]",
+        "",
+        "x_scaled = (x_raw - x_raw.mean()) / x_raw.std(ddof=0)",
+        "y_scaled = (y_raw - y_raw.mean()) / y_raw.std(ddof=0)",
+        "",
+        `learning_rate = ${params.lr}`,
+        `epochs = ${params.epochs}`,
+        "",
+        "history_raw = train_linear_regression(x_raw, y_raw, learning_rate, epochs)",
+        "history_scaled = train_linear_regression(x_scaled, y_scaled, learning_rate, epochs)",
+      ].join("\n"),
+      notes: [
+        "两组训练使用相同的初始参数、学习率和训练轮数。",
+        "唯一核心差别是输入和目标是否进入标准化尺度。",
+        "标准化通常让梯度下降更稳定，图中可以直接比较两条训练路径。",
+      ],
+    },
+    loss: {
+      title: "熟悉损失函数",
+      operation: "把每个样本的预测误差汇总成 MSE 损失",
+      code: [
+        `feature = "${params.feature}"`,
+        "x = scaled_data[feature]",
+        `y = scaled_data["${params.target}"]`,
+        "",
+        `w = ${w}`,
+        `b = ${b}`,
+        "",
+        "y_pred = w * x + b",
+        "error = y_pred - y",
+        "squared_error = error ** 2",
+        "",
+        "mse = np.mean(squared_error)",
+        `# current_mse = ${loss}`,
+      ].join("\n"),
+      notes: [
+        "error 是预测值与真实值的差，也就是残差。",
+        "平方误差会放大较大的偏差，所以大残差点更值得关注。",
+        "MSE 是所有平方误差的平均值，对应右侧显示的损失数值。",
+      ],
+    },
+    optimization: {
+      title: "熟悉优化准则",
+      operation: "根据当前梯度更新 w 和 b",
+      code: [
+        `w = ${w}`,
+        `b = ${b}`,
+        `learning_rate = ${params.lr}`,
+        "",
+        "y_pred = w * x + b",
+        "error = y_pred - y",
+        "",
+        "dw = 2 * np.mean(error * x)",
+        "db = 2 * np.mean(error)",
+        "",
+        "w_new = w - learning_rate * dw",
+        "b_new = b - learning_rate * db",
+        "",
+        `# 当前 dw = ${dw}`,
+        `# 当前 db = ${db}`,
+        `# 更新后 w = ${newW}`,
+        `# 更新后 b = ${newB}`,
+      ].join("\n"),
+      notes: [
+        "dw 表示 loss 在 w 方向上的坡度，db 表示 loss 在 b 方向上的坡度。",
+        "梯度下降使用负梯度方向更新参数。",
+        "学习率控制每一步移动的距离，过大可能发散，过小会变慢。",
+      ],
+    },
+    custom: {
+      title: "自定义参数训练",
+      operation: "把当前右侧参数生成完整训练代码",
+      code: [
+        `feature = "${params.feature}"`,
+        `target = "${params.target}"`,
+        "",
+        "x = scaled_data[feature]",
+        "y = scaled_data[target]",
+        "",
+        `w = ${params.w}`,
+        `b = ${params.b}`,
+        `learning_rate = ${params.lr}`,
+        `epochs = ${params.epochs}`,
+        "",
+        "history = []",
+        "for epoch in range(epochs):",
+        "    y_pred = w * x + b",
+        "    error = y_pred - y",
+        "    loss = np.mean(error ** 2)",
+        "",
+        "    dw = 2 * np.mean(error * x)",
+        "    db = 2 * np.mean(error)",
+        "",
+        "    history.append({\"epoch\": epoch, \"loss\": loss, \"w\": w, \"b\": b})",
+        "    w = w - learning_rate * dw",
+        "    b = b - learning_rate * db",
+      ].join("\n"),
+      notes: [
+        "这里的 feature、w、b、learning_rate 和 epochs 会随右侧当前输入同步变化。",
+        "history 用来记录每一轮的 loss 和参数轨迹。",
+        "页面中的散点图、Loss 图、w/b 轨迹都来自这段训练循环的结果。",
+      ],
+    },
+  };
+  return specs[stepId] || specs.process;
+}
+
+function trainCodeDrawerHtml(spec) {
+  const notes = spec.notes.map((note, index) => `<li>${index + 1}. ${escapeHtml(note)}</li>`).join("");
+  return `
+    <div class="code-drawer-backdrop">
+      <aside class="code-drawer" role="dialog" aria-modal="true" aria-label="当前步骤代码">
+        <div class="code-drawer-head">
+          <div>
+            <div class="code-kicker">当前步骤代码</div>
+            <h2>${escapeHtml(spec.title)}</h2>
+          </div>
+          <button class="icon-btn code-close-btn" type="button" data-code-close="true" aria-label="关闭代码面板">x</button>
+        </div>
+        <div class="code-operation">
+          <span>当前操作</span>
+          <strong>${escapeHtml(spec.operation)}</strong>
+        </div>
+        <div class="code-block-head">
+          <span>核心代码</span>
+          <button class="secondary-btn code-copy-btn" type="button">复制代码</button>
+        </div>
+        <pre class="teaching-code"><code>${escapeHtml(spec.code)}</code></pre>
+        <div class="code-explain">
+          <h3>代码解释</h3>
+          <ol>${notes}</ol>
+        </div>
+      </aside>
     </div>`;
+}
+
+function openTrainCodeDrawer(stepId) {
+  closeTrainCodeDrawer();
+  document.body.insertAdjacentHTML("beforeend", trainCodeDrawerHtml(trainCodeSpec(stepId)));
+  const drawer = document.querySelector(".code-drawer-backdrop");
+  drawer?.addEventListener("click", event => {
+    if (!event.target.closest("[data-code-close]")) return;
+    closeTrainCodeDrawer();
+  });
+  drawer?.querySelector(".code-copy-btn")?.addEventListener("click", async event => {
+    const code = drawer.querySelector(".teaching-code code")?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(code);
+      event.currentTarget.textContent = "已复制";
+      setTimeout(() => { event.currentTarget.textContent = "复制代码"; }, 1200);
+    } catch (_err) {
+      event.currentTarget.textContent = "复制失败";
+    }
+  });
+}
+
+function closeTrainCodeDrawer() {
+  document.querySelector(".code-drawer-backdrop")?.remove();
+}
+
+function bindTrainCodeButtons() {
+  if (window.trainCodeButtonsBound) return;
+  window.trainCodeButtonsBound = true;
+  document.addEventListener("click", event => {
+    const button = event.target.closest("[data-train-code]");
+    if (!button) return;
+    openTrainCodeDrawer(button.dataset.trainCode || activeTrainStep);
+  });
 }
 
 function trainRangeHtml(id, label, value, min, max, step, valueId, formatter) {
@@ -592,6 +841,7 @@ function trainStepHint() {
 }
 
 function bindTrainStepPanel() {
+  bindTrainCodeButtons();
   setTrainCheckedViews(trainStepViews());
   updateTrainRangeText();
   bindRangeStepperButtons();

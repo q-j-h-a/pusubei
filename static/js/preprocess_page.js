@@ -113,6 +113,7 @@ function renderPreprocessLoadPanel() {
         <button class="primary-btn" id="loadDatasetBtn" type="button">加载数据集</button>
       </div>
       <div class="status-line hidden" id="datasetLoadMessage"></div>
+      ${preprocessCodeButtonHtml("load")}
     </div>`;
 }
 
@@ -131,11 +132,13 @@ function renderStandardizePanel() {
         <label class="control-label" for="dataFeature">特征选择</label>
         <select id="dataFeature" ${datasetLoaded ? "" : "disabled"}>${featureOptionsHtml}</select>
       </div>
+      ${preprocessCodeButtonHtml("standardize")}
     </div>`;
 }
 
 function bindPreprocessControls() {
   restoreDataFormState();
+  bindPreprocessCodeButtons();
   if ($("dataFeature")) {
     $("dataFeature").addEventListener("change", async () => {
       if (activePreprocessStep === "raw_viz" || activePreprocessStep === "standard_viz") {
@@ -254,6 +257,7 @@ function renderRawDataVizPanel() {
           <div class="check-list">${moduleOptionsHtml}</div>
         </details>
       </div>
+      ${preprocessCodeButtonHtml(activePreprocessStep)}
     </div>`;
 }
 
@@ -1216,7 +1220,227 @@ function visualizationPanelHtmlClean({ title }) {
         <label class="control-label" for="dataFeature">特征选择</label>
         <select id="dataFeature" ${datasetLoaded ? "" : "disabled"}>${featureOptionsHtml}</select>
       </div>
+      ${preprocessCodeButtonHtml(activePreprocessStep)}
     </div>`;
 }
 
 visualizationPanelHtml = visualizationPanelHtmlClean;
+
+function preprocessCodeButtonHtml(stepId) {
+  return `<button class="secondary-btn code-toggle-btn" type="button" data-preprocess-code="${escapeHtml(stepId || "load")}">查看本步骤代码</button>`;
+}
+
+function preprocessCurrentFeature() {
+  return $("dataFeature")?.value
+    || dataCache?.feature
+    || viewStateStore.preprocessFormStateV1?.feature
+    || currentDatasetMeta?.features?.[0]
+    || DEFAULT_FEATURE;
+}
+
+function preprocessCurrentTarget() {
+  return dataCache?.target || currentDatasetMeta?.target || "MEDV";
+}
+
+function preprocessStandardizeRow(feature) {
+  return (dataCache?.standardize_table || []).find(item => item.feature === feature) || null;
+}
+
+function preprocessCodeSpec(stepId) {
+  const feature = preprocessCurrentFeature();
+  const target = preprocessCurrentTarget();
+  const row = preprocessStandardizeRow(feature);
+  const targetRow = preprocessStandardizeRow(target);
+  const featureMean = row ? num(row.mean, 6) : "feature_mean";
+  const featureStd = row ? num(row.std, 6) : "feature_std";
+  const targetMean = targetRow ? num(targetRow.mean, 6) : "target_mean";
+  const targetStd = targetRow ? num(targetRow.std, 6) : "target_std";
+
+  const specs = {
+    load: {
+      title: "加载原始数据",
+      operation: "读取数据并拆分输入特征 X 与目标 y",
+      code: [
+        "import pandas as pd",
+        "",
+        "data = pd.read_csv(\"datasets/raw/boston_housing.csv\")",
+        "",
+        "X = data.iloc[:, :-1]",
+        "y = data.iloc[:, -1]",
+        `target_name = "${target}"`,
+      ].join("\n"),
+      notes: [
+        "读取 CSV 后保留第一行列名。",
+        "除最后一列外，其余列作为输入特征 X。",
+        `当前实验把 ${target} 作为目标值 y。`,
+      ],
+    },
+    detail: {
+      title: "数据详情统计",
+      operation: "计算页面中的数据规模、质量与统计摘要",
+      code: [
+        "sample_count = len(data)",
+        "feature_count = X.shape[1]",
+        "missing_count = data.isnull().sum().sum()",
+        "duplicate_count = data.duplicated().sum()",
+        "",
+        "summary = data.describe()",
+      ].join("\n"),
+      notes: [
+        "sample_count 对应样本数量。",
+        "feature_count 对应输入特征数量。",
+        "missing_count 与 duplicate_count 对应数据质量指标。",
+        "describe() 生成最小值、最大值、平均值和标准差等统计量。",
+      ],
+    },
+    raw_viz: {
+      title: "原始数据可视化",
+      operation: "从原始数据中取出当前特征并绘制散点图",
+      code: [
+        `feature = "${feature}"`,
+        `target = "${target}"`,
+        "",
+        "x = data[feature]",
+        "y = data[target]",
+        "",
+        "plt.scatter(x, y)",
+        "plt.xlabel(feature)",
+        "plt.ylabel(target)",
+      ].join("\n"),
+      notes: [
+        `当前横轴特征是 ${feature}。`,
+        `纵轴目标值是 ${target}。`,
+        "这里展示的是取数和绘图逻辑，不展示前端图表配置。",
+      ],
+    },
+    standardize: {
+      title: "数据标准化",
+      operation: "对特征列和目标列一起做 z-score 标准化",
+      code: [
+        "columns = feature_columns + [target_column]",
+        "scaled_data = data.copy()",
+        "",
+        "for column in columns:",
+        "    mean = data[column].mean()",
+        "    std = data[column].std(ddof=0)",
+        "    scaled_data[column] = (data[column] - mean) / std",
+        "",
+        `# 当前特征 ${feature}`,
+        `${feature}_scaled = (data["${feature}"] - ${featureMean}) / ${featureStd}`,
+        `# 当前目标 ${target}`,
+        `${target}_scaled = (data["${target}"] - ${targetMean}) / ${targetStd}`,
+      ].join("\n"),
+      notes: [
+        "本实验会同时标准化输入特征和目标列。",
+        "mean 是当前列的平均值，std 是当前列的标准差。",
+        "标准化后，不同量纲的数据会进入相近的数值范围。",
+      ],
+    },
+    standard_viz: {
+      title: "标准数据可视化",
+      operation: "使用标准化后的特征和目标绘制散点图",
+      code: [
+        `feature = "${feature}"`,
+        `target = "${target}"`,
+        "",
+        "x_scaled = scaled_data[feature]",
+        "y_scaled = scaled_data[target]",
+        "",
+        "plt.scatter(x_scaled, y_scaled)",
+        "plt.xlabel(feature + \" standardized\")",
+        "plt.ylabel(target + \" standardized\")",
+      ].join("\n"),
+      notes: [
+        `横轴是标准化后的 ${feature}。`,
+        `纵轴是标准化后的 ${target}。`,
+        "和原始散点图相比，点的相对关系不变，但坐标尺度变了。",
+      ],
+    },
+  };
+  return specs[stepId] || specs.load;
+}
+
+function preprocessCodeDrawerHtml(spec) {
+  const notes = spec.notes.map((note, index) => `<li>${index + 1}. ${escapeHtml(note)}</li>`).join("");
+  return `
+    <div class="code-drawer-backdrop">
+      <aside class="code-drawer" role="dialog" aria-modal="true" aria-label="当前步骤代码">
+        <div class="code-drawer-head">
+          <div>
+            <div class="code-kicker">当前步骤代码</div>
+            <h2>${escapeHtml(spec.title)}</h2>
+          </div>
+          <button class="icon-btn code-close-btn" type="button" data-code-close="true" aria-label="关闭代码面板">x</button>
+        </div>
+        <div class="code-operation">
+          <span>当前操作</span>
+          <strong>${escapeHtml(spec.operation)}</strong>
+        </div>
+        <div class="code-block-head">
+          <span>核心代码</span>
+          <button class="secondary-btn code-copy-btn" type="button">复制代码</button>
+        </div>
+        <pre class="teaching-code"><code>${escapeHtml(spec.code)}</code></pre>
+        <div class="code-explain">
+          <h3>代码解释</h3>
+          <ol>${notes}</ol>
+        </div>
+      </aside>
+    </div>`;
+}
+
+function openPreprocessCodeDrawer(stepId) {
+  closePreprocessCodeDrawer();
+  document.body.insertAdjacentHTML("beforeend", preprocessCodeDrawerHtml(preprocessCodeSpec(stepId)));
+  const drawer = document.querySelector(".code-drawer-backdrop");
+  drawer?.addEventListener("click", event => {
+    if (!event.target.closest("[data-code-close]")) return;
+    closePreprocessCodeDrawer();
+  });
+  drawer?.querySelector(".code-copy-btn")?.addEventListener("click", async event => {
+    const code = drawer.querySelector(".teaching-code code")?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(code);
+      event.currentTarget.textContent = "已复制";
+      setTimeout(() => { event.currentTarget.textContent = "复制代码"; }, 1200);
+    } catch (_err) {
+      event.currentTarget.textContent = "复制失败";
+    }
+  });
+}
+
+function closePreprocessCodeDrawer() {
+  document.querySelector(".code-drawer-backdrop")?.remove();
+}
+
+function bindPreprocessCodeButtons() {
+  if (window.preprocessCodeButtonsBound) return;
+  window.preprocessCodeButtonsBound = true;
+  document.addEventListener("click", event => {
+    const button = event.target.closest("[data-preprocess-code]");
+    if (!button) return;
+    openPreprocessCodeDrawer(button.dataset.preprocessCode || activePreprocessStep);
+  });
+}
+
+function renderPreprocessRightPanel() {
+  if (activePreprocessStep === "raw_viz") {
+    $("rightPanel").innerHTML = renderRawDataVizPanel();
+  } else if (activePreprocessStep === "standard_viz") {
+    $("rightPanel").innerHTML = renderStandardDataVizPanel();
+  } else if (activePreprocessStep === "standardize") {
+    $("rightPanel").innerHTML = renderStandardizePanel();
+  } else if (activePreprocessStep === "load") {
+    $("rightPanel").innerHTML = renderPreprocessLoadPanel();
+  } else {
+    $("rightPanel").innerHTML = `
+      <div class="right-title">控制面板</div>
+      <div class="control-card dataset-load-card">
+        <h3>数据详情</h3>
+        <p class="control-help-text">查看当前数据规模、质量检查和统计摘要的计算方式。</p>
+        ${preprocessCodeButtonHtml("detail")}
+      </div>`;
+  }
+  bindDatasetLoader();
+  bindPreprocessControls();
+}

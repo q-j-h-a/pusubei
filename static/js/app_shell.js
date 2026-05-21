@@ -51,12 +51,6 @@ async function setPage(page) {
       await renderEvaluateShell();
     } else if (page === "predict") {
       await renderPredictShell();
-      if (renderToken !== pageRenderToken) return;
-      if (predictData && predictionMatchesCurrentState()) {
-        restorePredictionView();
-      } else {
-        await loadPrediction();
-      }
     } else {
       await renderTheory(page);
     }
