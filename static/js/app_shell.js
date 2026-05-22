@@ -35,7 +35,9 @@ async function setPage(page) {
   if (page !== "preprocess") clearPageTopSlot();
   $("topFeature").textContent = `当前特征 ${currentFeature()}`;
   try {
-    if (page === "preprocess") {
+    if (page === "experiment_test") {
+      renderExperimentTestPage();
+    } else if (page === "preprocess") {
       await renderDataShell();
       if (renderToken !== pageRenderToken) return;
       if (dataCache) {
@@ -222,7 +224,11 @@ function bindShellResizers() {
   });
 }
 
-document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setPage(btn.dataset.page)));
+document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => {
+  const page = btn.dataset.page;
+  if (window.handleExperimentTestNavigation?.(page)) return;
+  setPage(page);
+}));
 const jumpExperiment = $("jumpExperiment");
 if (jumpExperiment) jumpExperiment.addEventListener("click", () => setPage("preprocess"));
 window.addEventListener("resize", () => {

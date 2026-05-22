@@ -1437,7 +1437,6 @@ function renderPreprocessRightPanel() {
       <div class="right-title">控制面板</div>
       <div class="control-card dataset-load-card">
         <h3>数据详情</h3>
-        <p class="control-help-text">查看当前数据规模、质量检查和统计摘要的计算方式。</p>
         ${preprocessCodeButtonHtml("detail")}
       </div>`;
   }

@@ -2000,6 +2000,294 @@
     .predict-actions .code-toggle-btn {
       margin-top: 0;
     }
+    .test-task-btn {
+      width: 100%;
+      min-height: 42px;
+      margin: 10px 0 8px;
+      border-radius: 10px;
+      border: 1px solid #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .test-task-btn:hover {
+      background: #dbeafe;
+      border-color: #1d4ed8;
+      box-shadow: 0 10px 18px rgba(37, 99, 235, .12);
+      transform: translateY(-1px);
+    }
+    .test-progress-note {
+      margin: 0 0 14px;
+      color: #1e3a8a;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.5;
+    }
+    .test-side-actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .test-side-actions .primary-btn,
+    .test-side-actions .secondary-btn {
+      width: 100%;
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .nav-btn.test-current .dot {
+      border-color: #0f9f78;
+      background: #0f9f78;
+      box-shadow: 0 0 0 5px #eafaf4;
+    }
+    .nav-btn.test-locked {
+      opacity: .54;
+      cursor: not-allowed;
+    }
+    .test-page-card {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+    }
+    .test-flow-grid,
+    .test-score-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .test-flow-grid div,
+    .test-score-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcff;
+      padding: 14px;
+      min-width: 0;
+    }
+    .test-flow-grid strong,
+    .test-score-card strong {
+      display: block;
+      color: #0f172a;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+    .test-flow-grid span,
+    .test-score-card span {
+      display: block;
+      margin-top: 6px;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .test-rule-box {
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      padding: 14px;
+      margin: 18px 0;
+    }
+    .test-record-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .test-record-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 14px;
+    }
+    .test-record-card.correct { border-color: #bbf7d0; background: #f0fdf4; }
+    .test-record-card.wrong { border-color: #fecdd3; background: #fff1f2; }
+    .test-record-head,
+    .test-answer-row,
+    .test-result-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .test-answer-row {
+      border-top: 1px solid rgba(148, 163, 184, .28);
+      padding-top: 8px;
+      margin-top: 8px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .test-explain {
+      margin-top: 10px;
+      color: #334155;
+      line-height: 1.65;
+    }
+    .test-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      background: rgba(15, 23, 42, .42);
+    }
+    .test-modal {
+      width: min(720px, 96vw);
+      max-height: min(760px, 92vh);
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+      padding: 20px;
+      display: grid;
+      gap: 14px;
+    }
+    .test-modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .test-modal-head h2 {
+      margin: 4px 0 0;
+      font-size: 22px;
+      color: #0f172a;
+    }
+    .test-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .test-section,
+    .test-feedback {
+      border: 1px solid #dbe4f0;
+      border-radius: 12px;
+      background: #fff;
+      padding: 14px;
+    }
+    .test-section > span {
+      display: block;
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 950;
+      margin-bottom: 6px;
+    }
+    .test-section p,
+    .test-feedback p {
+      margin: 0;
+      color: #273244;
+      line-height: 1.7;
+    }
+    .test-options {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .test-question-list {
+      display: grid;
+      gap: 12px;
+    }
+    .test-question-card {
+      display: grid;
+      gap: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+    .test-question-card > span {
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .test-question-card > p {
+      margin: 0;
+      color: #273244;
+      line-height: 1.7;
+    }
+    .test-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fbfcff;
+      padding: 10px;
+      color: #172033;
+      font-weight: 800;
+      line-height: 1.5;
+    }
+    .test-feedback.correct {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #047857;
+    }
+    .test-feedback.wrong {
+      border-color: #fecdd3;
+      background: #fff1f2;
+      color: #9f1239;
+    }
+    .test-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .test-final-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .test-final-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px 12px;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .test-final-row.correct {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #047857;
+    }
+    .test-final-row.wrong {
+      border-color: #fecdd3;
+      background: #fff1f2;
+      color: #9f1239;
+    }
+    .test-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      z-index: 1300;
+      transform: translate(-50%, 12px);
+      opacity: 0;
+      pointer-events: none;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 16px;
+      font-weight: 900;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, .22);
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .test-toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
     .check-list {
       display: grid;
       gap: 8px;
@@ -2700,6 +2988,7 @@
           <button class="nav-btn" data-page="train_eval" type="button"><span class="dot"></span><span><strong>模型训练</strong><span>训练与优化当前模型</span></span></button>
           <button class="nav-btn" data-page="evaluate" type="button"><span class="dot"></span><span><strong>模型评估</strong><span>查看指标与评估解释</span></span></button>
           <button class="nav-btn" data-page="predict" type="button"><span class="dot"></span><span><strong>模型预测</strong><span>输入样本并查看结果</span></span></button>
+          <button class="nav-btn" data-page="experiment_test" type="button"><span class="dot"></span><span><strong>实验测试</strong><span>按流程完成测试并生成结果</span></span></button>
         </div>
       </section>
     </aside>
@@ -2728,6 +3017,7 @@ const DEFAULT_FEATURE = {{ default_feature | tojson }};
 <script src="/static/js/predict_page.js?v=20260521_predict02"></script>
 <script src="/static/js/train_page.js?v=20260521_train24"></script>
 <script src="/static/js/evaluate_page.js?v=20260521_eval03"></script>
+<script src="/static/js/experiment_test.js?v=20260522_test01"></script>
 <script src="/static/js/app_shell.js"></script>
 </body>
 </html>

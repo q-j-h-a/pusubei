@@ -16,7 +16,6 @@ function evaluatePanelHtml() {
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
     <div class="control-card dataset-load-card">
       <h3>\u8bc4\u4f30\u6307\u6807\u4ee3\u7801</h3>
-      <p class="control-help-text">\u67e5\u770b RMSE\u3001MAE \u548c R\u00b2 \u7684\u8ba1\u7b97\u903b\u8f91\uff0c\u4ee3\u7801\u4f1a\u540c\u6b65\u5f53\u524d\u6307\u6807\u548c\u8bad\u7ec3\u5e27\u3002</p>
       ${evaluateCodeButtonHtml()}
     </div>`;
 }
