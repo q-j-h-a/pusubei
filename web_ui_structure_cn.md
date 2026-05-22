@@ -1,6 +1,6 @@
 # Web UI 结构说明
 
-本文档记录当前简单线性回归教学实验的前端页面结构、主要交互、状态规则和代码解释层设计。它面向后续维护和继续扩展页面的人，重点说明“页面怎么组织、用户怎么操作、哪些状态不能乱刷新”。
+本文档记录当前简单线性回归教学实验的前端页面结构、主要交互、状态规则、理论课件页和实验测试模块，方便后续维护和扩展。
 
 ## 1. 总体布局
 
@@ -8,16 +8,15 @@
 
 ```text
 body
-└── .app
-    ├── header.topbar
-    │   └── .brand
-    └── .shell
-        ├── aside.sidebar
-        ├── .splitter.splitter-left
-        ├── main.main#main
-        ├── .splitter.splitter-right
-        └── aside.assistant
-            └── #rightPanel
+└─ .app
+   ├─ header.topbar
+   └─ .shell
+      ├─ aside.sidebar
+      ├─ .splitter.splitter-left
+      ├─ main.main#main
+      ├─ .splitter.splitter-right
+      └─ aside.assistant
+         └─ #rightPanel
 ```
 
 默认宽度变量：
@@ -28,11 +27,11 @@ body
 --assistant-width: 20%;
 ```
 
-左侧是导航，中间是主要教学内容，右侧是当前页面的控制面板。代码抽屉打开时从右侧覆盖显示，不改变主图表布局。
+左侧为导航，中间为主要教学内容，右侧为当前页面控制面板。理论页进入 `.shell.theory` 模式后会隐藏右侧控制面板，只保留左侧导航和中间课件区域。
 
 ## 2. 左侧导航
 
-侧边栏分为理论部分和实验部分。
+左侧导航分为理论部分和实验部分。
 
 理论部分：
 
@@ -41,12 +40,12 @@ body
 实验目的
 前置知识
 模型介绍
-数据集
-训练模型
-学习准则
-参数优化
-评价指标
-预测结果
+  数据集
+  训练模型
+  学习准则
+  参数优化
+  评价指标
+预期成果
 思考拓展
 ```
 
@@ -57,6 +56,7 @@ body
 模型训练
 模型评估
 模型预测
+实验测试
 ```
 
 导航按钮通过 `data-page` 切换页面：
@@ -65,55 +65,99 @@ body
 button.nav-btn click -> setPage(btn.dataset.page)
 ```
 
-页面入口主要在 `static/js/app_shell.js` 中分发：
+页面分发主要在 `static/js/app_shell.js`：
 
 ```text
-preprocess  -> renderPreprocessShell()
-train_eval  -> renderTrainShell()
-evaluate    -> renderEvaluateShell()
-predict     -> renderPredictShell()
+preprocess       -> renderPreprocessShell()
+train_eval       -> renderTrainShell()
+evaluate         -> renderEvaluateShell()
+predict          -> renderPredictShell()
+experiment_test  -> renderExperimentTestPage()
+理论页           -> renderTheory(page)
 ```
 
-## 3. 中间主内容区
+## 3. 理论课件页
 
-主内容容器固定为：
+理论部分由以下文件组成：
+
+```text
+static/js/theory_page_registry.js
+static/js/theory-pages/basic.js
+static/js/theory-pages/purpose.js
+static/js/theory-pages/knowledge.js
+static/js/theory-pages/dataset.js
+static/js/theory-pages/model.js
+static/js/theory-pages/criterion.js
+static/js/theory-pages/optimization.js
+static/js/theory-pages/evaluation.js
+static/js/theory-pages/result.js
+static/js/theory-pages/thinking.js
+static/js/theory_page.js
+static/theory_deck_overrides.json
+```
+
+理论页结构：
+
+```text
+.theory-deck-shell
+├─ .theory-deck-toolbar
+├─ .theory-editor-tools
+└─ .theory-slide-viewport
+   └─ .theory-slide
+      └─ .theory-component
+```
+
+主要能力：
+
+- 只读模式浏览理论课件。
+- 编辑课件内容。
+- 插入文本、卡片、项目符号、公式、图表、图片。
+- 拖拽、缩放和删除组件。
+- 保存课件覆盖数据。
+- 导出 PDF。
+
+理论页样式集中在 `templates/index.html` 中 `.theory-*` 相关 CSS。同步理论功能时，不要只同步 JS，也要同步理论样式和 `theory_deck_overrides.json`。
+
+## 4. 中间主内容区
+
+中间内容容器固定为：
 
 ```text
 main.main#main
 ```
 
-不同页面会完全接管 `#main` 的内容。图表类页面通常使用：
+实验页通常使用：
 
 ```text
 .dashboard-grid.grid-stack
-└── .grid-stack-item
-    └── .grid-stack-item-content
-        └── section.chart-card
+└─ .grid-stack-item
+   └─ .grid-stack-item-content
+      └─ section.chart-card
 ```
 
-GridStack 用于图表卡片布局和拖拽调整。需要注意：页面切换时要销毁旧 grid 和旧 ECharts 实例，避免旧实例残留。
+GridStack 用于图表卡片布局和拖拽调整。页面切换时需要销毁旧 grid 和旧 ECharts 实例，避免残留。
 
-## 4. 右侧控制面板
+## 5. 右侧控制面板
 
-右侧控制面板统一渲染在：
+右侧控制面板渲染位置：
 
 ```text
 aside.assistant
-└── #rightPanel
+└─ #rightPanel
 ```
 
-每个页面有自己的控制面板结构。当前更推荐页面自己渲染关键控制区域，而不是完全依赖通用 schema 渲染，这样能保证教学页面的排版精度。
-
-通用视觉约定：
+视觉约定：
 
 - 页面标题使用 `.right-title`。
 - 控制面板主体使用 `.control-card`。
-- 同一组按钮必须放在同一个父容器中，用统一 `gap` 管理间距。
 - 主要按钮使用 `.primary-btn`。
 - 次要按钮使用 `.secondary-btn`。
-- 查看代码按钮额外带 `.code-toggle-btn`。
+- 查看代码按钮通常附加 `.code-toggle-btn`。
+- 同组按钮放在同一个父容器中，用 `gap` 控制间距。
 
-## 5. 数据预处理页
+测试模式下，原右侧控制面板保持功能不变，只在主卡片标题下方插入“查看测试内容”按钮。
+
+## 6. 数据预处理页
 
 入口文件：
 
@@ -121,7 +165,7 @@ aside.assistant
 static/js/preprocess_page.js
 ```
 
-页面步骤：
+步骤：
 
 ```text
 01 加载原始数据
@@ -135,24 +179,14 @@ static/js/preprocess_page.js
 
 ```text
 .preprocess-flow#preprocessFlow
-├── button[data-preprocess-step="load"]
-├── button[data-preprocess-step="detail"]
-├── button[data-preprocess-step="raw_viz"]
-├── button[data-preprocess-step="standardize"]
-└── button[data-preprocess-step="standard_viz"]
+├─ button[data-preprocess-step="load"]
+├─ button[data-preprocess-step="detail"]
+├─ button[data-preprocess-step="raw_viz"]
+├─ button[data-preprocess-step="standardize"]
+└─ button[data-preprocess-step="standard_viz"]
 ```
 
-主要内容根据步骤切换。预处理页不是一屏堆满所有图表，而是围绕当前步骤展示最重要的表格、公式、统计和图表。
-
-代码入口建议：
-
-- 加载原始数据：加载按钮或当前步骤卡片右上角。
-- 数据详情：统计卡片右上角。
-- 原始数据可视化：图表卡片右上角。
-- 数据标准化：标准化公式旁边，优先级最高。
-- 标准数据可视化：图表卡片右上角。
-
-代码片段重点：
+代码重点：
 
 ```python
 data = pd.read_csv("boston_housing.csv")
@@ -164,9 +198,7 @@ std = X.std(ddof=0)
 X_scaled = (X - mean) / std
 ```
 
-当前实验中，标准化步骤会同时处理输入特征和目标列。
-
-## 6. 模型训练页
+## 7. 模型训练页
 
 入口文件：
 
@@ -174,7 +206,7 @@ X_scaled = (X - mean) / std
 static/js/train_page.js
 ```
 
-训练页按教学目标分成 5 个步骤：
+步骤：
 
 ```text
 01 熟悉回归过程
@@ -184,46 +216,12 @@ static/js/train_page.js
 05 自定义参数训练
 ```
 
-### 6.1 熟悉回归过程
-
-目标是让学生看到一条直线如何逐步拟合散点。
-
-常见视图：
-
-```text
-模型训练散点图
-训练计算过程
-Loss 曲线
-w 参数路径
-b 参数路径
-RMSE
-MAE
-R²
-```
-
-右侧控制：
-
-```text
-特征选择
-是否使用标准化
-初始 w / 初始 b
-学习率
-训练轮数
-开始训练
-单步训练
-自动播放
-暂停
-重置
-查看训练代码
-```
-
 核心代码：
 
 ```python
 w = 0
 b = 0
-lr = 0.03
-epochs = 200
+learning_rate = 0.03
 
 for epoch in range(epochs):
     y_pred = w * x + b
@@ -232,72 +230,13 @@ for epoch in range(epochs):
     dw = -2 * np.mean(x * (y - y_pred))
     db = -2 * np.mean(y - y_pred)
 
-    w = w - lr * dw
-    b = b - lr * db
+    w = w - learning_rate * dw
+    b = b - learning_rate * db
 ```
 
-### 6.2 熟悉预处理影响
+训练页需要让学生观察拟合线、Loss、参数路径和梯度下降过程。
 
-目标是比较“原始特征训练”和“标准化特征训练”的差异。这个步骤强调只改变预处理方式，其余训练配置保持一致。
-
-代码说明重点：
-
-```python
-x_raw = X["RM"]
-x_scaled = (x_raw - x_raw.mean()) / x_raw.std()
-
-loss_raw = train(x_raw, y)
-loss_scaled = train(x_scaled, y)
-```
-
-### 6.3 熟悉损失函数
-
-目标是理解残差、平方误差和 MSE。
-
-视图包括单样本残差、多样本残差、残差直方图、残差散点等。
-
-核心代码：
-
-```python
-y_pred = w * x + b
-error = y - y_pred
-squared_error = error ** 2
-mse = np.mean(squared_error)
-```
-
-### 6.4 熟悉优化准则
-
-目标是理解梯度下降和参数更新方向。
-
-视图包括 Loss 等高线、w/b 切面、3D Loss 曲面和参数路径。
-
-核心代码：
-
-```python
-dw = -2 * np.mean(x * (y - y_pred))
-db = -2 * np.mean(y - y_pred)
-
-w_new = w - learning_rate * dw
-b_new = b - learning_rate * db
-```
-
-### 6.5 自定义参数训练
-
-目标是让学生改动特征、初始参数、学习率和轮数后，看到训练过程与代码同步变化。
-
-代码面板应动态反映：
-
-```python
-feature = "RM"
-w = 0
-b = 0
-learning_rate = 0.03
-epochs = 200
-```
-
-如果用户修改学习率、特征或初始参数，代码面板里的对应值也要更新。
-
-## 7. 模型评估页
+## 8. 模型评估页
 
 入口文件：
 
@@ -305,18 +244,9 @@ epochs = 200
 static/js/evaluate_page.js
 ```
 
-评估页依赖当前训练页的 `trainData`。如果还没有训练结果，应显示空状态，提示先完成训练。
+评估页依赖当前训练结果。若没有训练结果，应显示空状态并提示先完成训练。
 
-主要结构：
-
-```text
-#main
-└── .dashboard-grid.grid-stack#evaluateWrap
-    ├── 当前模型拟合
-    └── 指标卡片
-```
-
-指标支持切换：
+支持指标：
 
 ```text
 RMSE
@@ -324,17 +254,7 @@ MAE
 R²
 ```
 
-右侧控制面板：
-
-```text
-控制面板
-└── .control-card
-    ├── 模型评估
-    ├── 当前指标说明
-    └── 查看评估代码
-```
-
-代码面板根据当前指标动态生成代码：
+代码示例：
 
 ```python
 y_pred = w * x + b
@@ -348,9 +268,9 @@ ss_tot = np.sum((y - np.mean(y)) ** 2)
 r2 = 1 - ss_res / ss_tot
 ```
 
-评估页的教学重点是解释指标含义，而不是重新训练模型。
+评估页重点是解释指标含义，而不是重新训练模型。
 
-## 8. 模型预测页
+## 9. 模型预测页
 
 入口文件：
 
@@ -358,487 +278,119 @@ r2 = 1 - ss_res / ss_tot
 static/js/predict_page.js
 ```
 
-预测页也依赖当前训练页的 `trainData`。没有训练结果时，显示空状态。
+预测页依赖当前训练结果。没有训练结果时显示空状态。
 
-### 8.1 主内容结构
-
-有可用训练模型但尚未点击预测时，中间区域仍然显示基础图表：
-
-```text
-#main
-└── .dashboard-grid.grid-stack#predictWrap
-    ├── 预测可视化
-    ├── 原始散点图
-    └── 预测计算过程
-```
-
-尚未点击“开始预测”时：
-
-- 图表显示样本点和当前回归线。
-- 不显示预测点。
-- 不显示预测辅助线。
-- 右侧预测 MEDV 和模型输入 x 显示 `--`。
-- 计算过程卡片显示提示文案。
-
-点击“开始预测”后：
-
-- 显示预测点。
-- 显示预测辅助线。
-- 显示原始空间中的预测点。
-- 更新预测 MEDV 和模型输入 x。
-- 展示完整预测计算过程。
-
-### 8.2 右侧控制面板
-
-预测页右侧控制面板结构：
+预测页右侧结构：
 
 ```text
 #rightPanel
-├── .right-title 控制面板
-└── .control-card.predict-control-card
-    ├── h3 模型预测
-    ├── .mini-stats
-    │   ├── 预测 MEDV
-    │   └── 模型输入 x
-    ├── 当前模型
-    │   ├── 来源：自定义参数训练
-    │   ├── 特征：RM
-    │   ├── w = ...
-    │   └── b = ...
-    ├── 特征选择
-    ├── 输入类型
-    ├── 输入特征值
-    └── .predict-actions
-        ├── 开始预测
-        └── 查看预测代码
+└─ .control-card.predict-control-card
+   ├─ h3 模型预测
+   ├─ .mini-stats
+   ├─ 当前模型
+   ├─ 特征选择
+   ├─ 输入类型
+   ├─ 输入特征值
+   └─ .predict-actions
+      ├─ 开始预测
+      └─ 查看预测代码
 ```
 
-当前模型区域使用纯信息展示，不再嵌套额外卡片，避免右侧面板显得过重。
-
-按钮规则：
-
-- “开始预测”和“查看预测代码”必须在同一个 `.predict-actions` 父容器中。
-- 二者宽度一致。
-- 二者间距由 `.predict-actions` 的 `gap` 控制。
-- 不要给其中一个按钮额外加 `margin-top`，否则会造成间距不一致。
-
-输入特征值规则：
+预测输入使用：
 
 ```html
 <input id="predictInput" type="text" inputmode="decimal" autocomplete="off">
 ```
 
-这里故意不用 `type="number"`，因为这是直接输入预测值，不需要浏览器提供上下微调箭头。
+交互规则：
 
-### 8.3 预测状态规则
+- 修改输入值只保存表单状态，不刷新预测图表。
+- 修改输入类型只保存选择状态，不刷新预测图表。
+- 点击“开始预测”或在输入框按 Enter 后，才执行预测。
+- 切换训练模型或重新训练后，预测结果应回到待预测状态。
 
-预测页有三种状态：
+## 10. 代码解释层
 
-```text
-无训练模型
-有训练模型但未预测
-已预测
-```
-
-无训练模型：
-
-- 禁用预测按钮。
-- 禁用输入类型。
-- 中间显示空状态，提示先训练模型。
-
-有训练模型但未预测：
-
-- 显示基础图表。
-- 不显示预测点和预测结果。
-- 右侧结果为 `--`。
-- 计算过程显示提示。
-
-已预测：
-
-- 显示预测点、辅助线和计算过程。
-- 右侧显示预测 MEDV 和模型输入 x。
-
-重要交互规则：
-
-- 修改输入特征值时，只保存输入值，不刷新中间图表。
-- 修改输入类型时，只保存选择值，不刷新中间图表。
-- 只有点击“开始预测”或在输入框按 Enter，才执行 `loadPrediction()` 并更新预测结果。
-- 切换训练模型、训练帧或重新训练后，预测结果应重新进入待预测状态。
-
-相关函数：
-
-```text
-renderPredictShell()
-renderPredictPanel()
-persistPredictFormState()
-restorePredictFormState()
-resetPredictionPendingState()
-renderPredictBaseCharts()
-loadPrediction()
-renderPredictCharts()
-```
-
-## 9. 代码解释层
-
-代码解释层是本项目当前最重要的教学增强功能。
-
-### 9.1 设计原则
-
-- 代码不是主内容，而是当前步骤的解释层。
-- 学生先看现象，再点击“查看代码”理解实现逻辑。
-- 代码以 Python / NumPy 风格为主。
-- 每段代码控制在 5 到 20 行左右。
-- 代码只解释当前操作，不展示完整工程源码。
-- 默认不展示 ECharts、GridStack、DOM 操作等前端工程代码。
-
-### 9.2 抽屉结构
-
-代码抽屉 DOM 结构：
+代码抽屉结构：
 
 ```text
 .code-drawer-backdrop
-└── aside.code-drawer
-    ├── .code-drawer-head
-    │   ├── .code-kicker
-    │   ├── h2
-    │   └── button.code-close-btn
-    ├── .code-operation
-    ├── .code-block-head
-    │   ├── 核心代码
-    │   └── button.code-copy-btn
-    ├── pre.teaching-code
-    └── .code-explain
+└─ aside.code-drawer
+   ├─ .code-drawer-head
+   ├─ .code-operation
+   ├─ .code-block-head
+   ├─ pre.teaching-code
+   └─ .code-explain
 ```
 
 关闭规则：
 
-- 只通过右上角 `x` 关闭。
+- 只能通过右上角关闭按钮关闭。
 - 点击遮罩或页面其他位置不关闭。
-- 这是为了避免学生正在看代码时误触导致抽屉消失。
+- 这是为了避免学生阅读代码时误触导致面板消失。
 
-### 9.3 各页代码入口
+代码展示原则：
 
-预处理页：
+- 以 Python / NumPy 风格为主。
+- 不展示 ECharts、GridStack、DOM 等前端工程代码。
+- 代码与当前页面状态联动，例如特征、学习率、w、b、输入类型和指标模式。
 
-```text
-查看加载代码
-查看统计代码
-查看绘图代码
-查看标准化代码
-```
+## 11. 实验测试模块
 
-训练页：
+入口文件：
 
 ```text
-查看训练流程代码
-查看预处理影响代码
-查看损失函数代码
-查看梯度更新代码
-查看自定义训练代码
+static/js/experiment_test.js
 ```
 
-评估页：
-
-```text
-查看评估代码
-```
-
-预测页：
-
-```text
-查看预测代码
-```
-
-### 9.4 动态代码联动
-
-代码面板应尽量与当前页面状态联动：
-
-- 当前特征变化，代码里的 `feature = "RM"` 同步变化。
-- 学习率变化，代码里的 `learning_rate = ...` 同步变化。
-- 初始 w/b 变化，代码里的 `w = ...`、`b = ...` 同步变化。
-- 评估指标切换，代码展示 RMSE、MAE 或 R² 对应片段。
-- 预测输入类型切换，代码展示原始输入标准化或直接使用标准化输入。
-- 预测输入值变化，代码保存输入，但不刷新结果；点击预测后代码展示本次预测值。
-
-## 10. 状态存储
-
-前端状态主要保存在 `viewStateStore` 中。常见 key：
-
-```text
-activePreprocessStepV1
-preprocessProgressStepV1
-preprocessGridLayoutV7
-activeTrainStepV1
-trainProgressStepV1
-trainFormStateV1
-trainSelectedViewsV1
-trainCompareViewsV1
-trainGridLayoutV2
-evaluateMetricModeV1
-predictFormStateV1
-currentDatasetMetaV1
-```
-
-维护原则：
-
-- 表单输入变化可以保存状态。
-- 保存状态不等于执行计算。
-- 图表刷新应由明确动作触发，例如加载数据、开始训练、开始预测。
-- 如果只是输入框变化，不要重置主内容区。
-
-## 11. 图表数据流
-
-动作执行：
-
-```text
-按钮点击
--> runAction(action, payload)
--> POST /api/run_action
--> models/simple_linear_regression/model.py
--> 返回 context_id 和核心结果
-```
-
-图表数据：
-
-```text
-页面请求图表
--> POST /api/chart_data
--> models/simple_linear_regression/charts/<page>/*
--> chart_renderers.js / 页面专属 option 函数
--> ECharts 渲染
-```
-
-主要 action：
-
-```text
-load_dataset
-data_view
-standardize_dataset
-prepare_train
-predict
-```
-
-## 12. 样式维护要点
-
-### 12.1 右侧面板
-
-- 同类内容保持同一层级，不要卡片套卡片。
-- 当前模型这种静态信息适合纯文本行展示。
-- 结果数值可以用 `.mini-stats`。
-- 操作按钮放在统一父容器内，使用 grid 或 flex 统一宽度。
-
-### 12.2 预测页按钮
-
-正确结构：
-
-```html
-<div class="predict-actions">
-  <button class="primary-btn" id="predictRun">开始预测</button>
-  <button class="secondary-btn code-toggle-btn">查看预测代码</button>
-</div>
-```
-
-对应规则：
-
-```css
-.predict-actions {
-  display: grid;
-  gap: 12px;
-}
-
-.predict-actions .primary-btn,
-.predict-actions .secondary-btn {
-  width: 100%;
-}
-
-.predict-actions .code-toggle-btn {
-  margin-top: 0;
-}
-```
-
-不要让两个按钮分别处在不同父容器，也不要让其中一个继承全局额外 margin。
-
-### 12.3 输入框
-
-预测输入值使用文本输入：
-
-```html
-type="text"
-inputmode="decimal"
-```
-
-这样能隐藏浏览器 number 输入框的上下箭头，同时保留数字键盘提示和后续 `Number(...)` 解析。
-
-### 12.4 图表卡片
-
-- 图表标题、说明、图例和图表区域不要互相覆盖。
-- 图表卡片不嵌套卡片。
-- 如果卡片内有切换按钮，按钮组应使用固定高度和稳定间距，避免图表区域跳动。
-
-## 13. 验证命令
-
-每次修改 JS 或 Python 后建议执行：
-
-```bash
-python -m compileall app.py core models
-node --check static/js/api.js
-node --check static/js/app_shell.js
-node --check static/js/chart_renderers.js
-node --check static/js/control_renderers.js
-node --check static/js/evaluate_page.js
-node --check static/js/experiment_runtime.js
-node --check static/js/predict_page.js
-node --check static/js/preprocess_page.js
-node --check static/js/schema_registry.js
-node --check static/js/state_runtime.js
-node --check static/js/theory_page.js
-node --check static/js/train_page.js
-node --check static/js/view_renderers.js
-```
-
-## 14. 后续扩展建议
-
-- 增加全局“代码模式”开关：可视化 / 可视化 + 代码。
-- 给图表绘制逻辑增加可选“绘图代码”入口，但默认仍以机器学习逻辑代码为主。
-- 预测页可增加“上一次预测参数”摘要，帮助学生区分当前输入和已执行预测。
-- 评估页可增加指标对比表，让 RMSE、MAE、R² 的差异更直观。
-- 如果未来支持上传数据集，需要在文档中补充 CSV 字段规则、目标列选择规则和异常提示规则。
-## 实验测试模块补充
-
-本项目新增一个独立的“实验测试”模块。该模块不是新的实验页面实现，而是覆盖在原有四个实验模块之上的测试流程编排层。
-
-### 入口位置
-
-左侧实验部分新增导航项：
+左侧新增：
 
 ```text
 实验测试
 ```
 
-点击后进入测试说明页。测试说明页中间主卡片只展示测试范围和规则，不放操作按钮；右侧控制面板负责主要操作。
-
-右侧控制面板在未开始时：
+整体流程：
 
 ```text
-控制面板
-└── .control-card
-    ├── h3 实验测试
-    └── [开始实验测试]
+点击实验测试
+-> 进入测试说明页
+-> 点击开始实验测试
+-> 重置四个实验模块状态
+-> 自动进入第一个测试节点
+-> 学生在原实验页操作
+-> 点击右侧查看测试内容
+-> 弹窗答题
+-> 提交并查看反馈
+-> 进入下一题
+-> 最后一题提交后显示测试结果
 ```
 
-测试完成后：
+测试模式下右侧按钮插入位置：
 
 ```text
-控制面板
-└── .control-card
-    ├── h3 测试已完成
-    └── .test-side-actions
-        ├── [重新开始测试]
-        └── [返回自由实验]
+.control-card
+├─ h3 当前模块标题
+├─ [查看测试内容]
+├─ 实验测试进行中：第 n / total 题
+├─ 原有控件
+└─ 原有操作按钮 / 查看代码按钮
 ```
 
-按钮布局使用统一父容器 `.test-side-actions`，通过 `gap` 管理间距，并保证两个按钮等宽、整卡片宽度。
-
-### 测试模式下的右侧按钮
-
-进入测试模式后，原有四个实验模块的右侧控制面板保持不变，只在主卡片标题下方插入：
-
-```text
-[查看测试内容]
-实验测试进行中：第 n / total 题
-```
-
-插入位置：
-
-```text
-控制面板
-└── .control-card
-    ├── h3 当前模块标题
-    ├── [查看测试内容]
-    ├── 测试进度提示
-    ├── 原有控件区域
-    └── 原有操作按钮 / 查看代码按钮
-```
-
-普通实验模式下不显示该按钮。
-
-### 测试弹窗结构
-
-点击“查看测试内容”后，页面显示居中测试弹窗：
+测试弹窗结构：
 
 ```text
 .test-modal-backdrop
-└── .test-modal
-    ├── .test-modal-head
-    │   ├── 实验测试 n / total
-    │   ├── 当前节点标题
-    │   └── 关闭按钮
-    ├── .test-meta
-    ├── .test-section 操作要求
-    ├── .test-section 测试问题
-    └── .test-modal-actions
+└─ .test-modal
+   ├─ .test-modal-head
+   ├─ .test-meta
+   ├─ .test-section 操作要求
+   ├─ .test-section 测试问题
+   └─ .test-modal-actions
 ```
 
-弹窗中不再展示“观察提示”。当前结构只保留：
+弹窗不再显示“观察提示”。如果同一个 `page + step` 有多道题，会合并在同一个弹窗里一次展示、一次提交。
 
-```text
-一、操作要求
-二、测试问题
-```
-
-如果同一页面同一步骤存在多道题，系统会把这些题合并到同一个弹窗中：
-
-```text
-二、测试问题
-└── .test-question-list
-    ├── .test-question-card 问题 1
-    └── .test-question-card 问题 2
-```
-
-单题时不使用题目卡片嵌套，直接在“测试问题”区域展示问题、选项和反馈，避免卡片套卡片。
-
-### 提交与反馈规则
-
-提交答案后：
-
-- 记录学生答案、正确答案、是否正确和解析。
-- 禁用当前题目的选项。
-- 隐藏提交按钮。
-- 显示正确/错误反馈和解析。
-- 显示“进入下一题”按钮。
-
-如果学生提交后关闭弹窗，但还没有进入下一题，再次打开“查看测试内容”时，应恢复已提交后的反馈状态，而不是回到可重新作答状态。
-
-如果当前提交的是最后一题：
-
-- 不显示“进入下一题”。
-- 直接结算测试状态。
-- 当前弹窗切换为测试结果弹窗。
-- 结果弹窗提供“查看完整结果”和“返回自由实验”。
-
-### 跳转和锁定规则
-
-每道题绑定一个页面和步骤：
-
-```js
-{
-  id: "preprocess_standardize_formula",
-  page: "preprocess",
-  step: "standardize"
-}
-```
-
-提交并进入下一题时，系统自动跳转到下一题绑定的页面和步骤。
-
-测试模式下：
-
-- 左侧实验导航锁定，不能自由进入未解锁模块。
-- 顶部步骤条锁定，不能跳到非当前测试节点。
-- 点击非当前测试节点时显示提示：请先完成当前测试内容。
-
-### 状态结构
-
-测试状态保存在前端 `viewStateStore` 中：
+测试状态：
 
 ```js
 experimentTestStateV1 = {
@@ -854,60 +406,110 @@ experimentTestStateV1 = {
 }
 ```
 
-字段说明：
+重要规则：
 
-- `active`：当前是否处于测试模式。
-- `started`：是否已经开始过测试。
-- `finished`：是否已完成全部测试。
-- `currentIndex`：当前题目在测试流中的索引。
-- `score`：当前得分。
-- `pendingFeedbackId`：已提交但尚未进入下一题的题目 id。
-- `answers`：学生答案映射。
-- `records`：最终结果页使用的答题记录。
-- `locked`：测试模式下是否锁定自由跳转。
+- 普通实验模式下不显示“查看测试内容”。
+- 测试模式下左侧实验导航和顶部步骤条锁定。
+- 已提交但未进入下一题时，重新打开弹窗应恢复反馈状态。
+- 最后一题提交后不显示“下一题”，直接显示测试结果。
+- 结果页中间区域展示总成绩、分模块成绩和答题详情。
+- 重新开始测试和返回自由实验按钮统一放在右侧控制面板。
 
-### 开始测试时的重置
+## 12. 状态存储
 
-点击“开始实验测试”时，需要先恢复四个实验模块到默认状态，避免沿用自由实验中的旧结果。
-
-重置内容包括：
-
-- 数据预处理回到“加载原始数据”。
-- 清空已加载数据、图表缓存和数据集 meta。
-- 模型训练回到“熟悉回归过程”。
-- 清空训练结果、训练表单和训练图表缓存。
-- 模型评估回到默认 RMSE。
-- 模型预测回到默认输入类型和默认输入值。
-- 清空预测结果和预测图表缓存。
-
-### 结果页
-
-测试完成后，“实验测试”页面中间区域展示完整结果：
+前端状态主要保存在 `viewStateStore` 中。常见 key：
 
 ```text
-总成绩：score / total
-分模块成绩
-答题详情
-  - 题目
-  - 学生答案
-  - 正确答案
-  - 是否正确
-  - 解析
+activePreprocessStepV1
+preprocessProgressStepV1
+activeTrainStepV1
+trainProgressStepV1
+trainFormStateV1
+evaluateMetricModeV1
+predictFormStateV1
+currentDatasetMetaV1
+experimentTestStateV1
 ```
 
-结果页中间主卡片不再放“重新开始测试”和“返回自由实验”按钮，这两个操作统一放在右侧控制面板中。
+维护原则：
 
-### 文件位置
+- 表单输入变化可以保存状态。
+- 保存状态不等于执行计算。
+- 图表刷新应由明确动作触发，例如加载数据、开始训练、开始预测、提交测试答案。
 
-测试模块主要实现文件：
+## 13. 后端接口
+
+主要接口：
 
 ```text
-static/js/experiment_test.js
+GET  /
+GET  /api/experiments
+GET  /api/dataset_profile
+GET  /api/page_schema
+GET  /api/chart_registry
+GET  /api/theory_deck_overrides
+POST /api/theory_deck_overrides
+POST /api/run_action
+POST /api/chart_data
 ```
 
-页面入口和分发接入：
+理论课件保存接口：
 
 ```text
-static/js/app_shell.js
-templates/index.html
+GET  /api/theory_deck_overrides
+POST /api/theory_deck_overrides
+```
+
+`POST` 请求体：
+
+```json
+{
+  "page_id": "dataset",
+  "deck": {}
+}
+```
+
+## 14. 样式维护要点
+
+- 不要把卡片嵌套在卡片里。
+- 右侧控制面板按钮应放在统一父容器中，通过 `gap` 管理间距。
+- 预测页的“开始预测”和“查看预测代码”必须同宽、同容器。
+- 测试页的右侧按钮使用 `.test-side-actions` 管理间距。
+- 理论页样式集中在 `.theory-*`，同步理论功能时要同时检查模板样式。
+- 左侧“模型介绍”的下拉符号使用 `&rsaquo;`，避免编码问题变成问号。
+
+## 15. 验证命令
+
+```bash
+python -m compileall app.py core models
+node --check static/js/api.js
+node --check static/js/app_shell.js
+node --check static/js/chart_renderers.js
+node --check static/js/control_renderers.js
+node --check static/js/evaluate_page.js
+node --check static/js/experiment_runtime.js
+node --check static/js/experiment_test.js
+node --check static/js/predict_page.js
+node --check static/js/preprocess_page.js
+node --check static/js/schema_registry.js
+node --check static/js/state_runtime.js
+node --check static/js/theory_page.js
+node --check static/js/theory_page_registry.js
+node --check static/js/train_page.js
+node --check static/js/view_renderers.js
+```
+
+理论拆分页：
+
+```bash
+node --check static/js/theory-pages/basic.js
+node --check static/js/theory-pages/purpose.js
+node --check static/js/theory-pages/knowledge.js
+node --check static/js/theory-pages/dataset.js
+node --check static/js/theory-pages/model.js
+node --check static/js/theory-pages/criterion.js
+node --check static/js/theory-pages/optimization.js
+node --check static/js/theory-pages/evaluation.js
+node --check static/js/theory-pages/result.js
+node --check static/js/theory-pages/thinking.js
 ```

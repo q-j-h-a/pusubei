@@ -1,0 +1,946 @@
+{
+  "purpose": {
+    "id": "purpose",
+    "title": "实验目的",
+    "subtitle": "建立从数据、模型、损失到评价的完整理解链路。",
+    "slides": [
+      {
+        "id": "slide-mpgikyo0-ddsjx6",
+        "layout": "default",
+        "components": [
+          {
+            "id": "p-mpgikyo0-flyv7j",
+            "type": "p",
+            "text": "实验目的",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "52px",
+              "fontWeight": "800",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "48px",
+              "top": "68px",
+              "width": "420px",
+              "height": "96px",
+              "zIndex": "35378"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "cards-mpgmdy90-i7onf9",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgmdy90-k4uxri",
+                "title": "数学建模能力",
+                "body": "理解回归分析的基本思想,掌握 如何将现实房价预测问题抽象为 线性方程组的优化问题。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "32px",
+              "top": "256px",
+              "width": "272px",
+              "height": "152px",
+              "zIndex": "31668"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "cards-mpgmgkx5-mad8x1",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "item-mpgmgkx5-1pks7n",
+                "title": "梯度下降实操",
+                "body": "直观理解梯度下降算法的工作原 理,学会在损失曲面上通过参数 迭代寻找全局最优解。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "352px",
+              "top": "256px",
+              "width": "272px",
+              "height": "152px",
+              "zIndex": "53843"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "cards-mpgmgpns-msw5i5",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "item-mpgmgpns-6brz3x",
+                "title": "模型验证与评估",
+                "body": "掌握均方误差 (MSE) 和决定系 数(R2) 等科学评价指标,学会 客观量化算法的预测性能。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "664px",
+              "top": "256px",
+              "width": "272px",
+              "height": "152px",
+              "zIndex": "66777"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          }
+        ]
+      }
+    ]
+  },
+  "basic": {
+    "id": "basic",
+    "title": "实验基本信息",
+    "subtitle": "线性回归用于从房屋特征中预测连续房价。",
+    "slides": [
+      {
+        "id": "slide-mpgla9qz-b5r7og",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h1-mpgla9qz-whli3f",
+            "type": "h1",
+            "kind": "",
+            "label": "",
+            "text": "实验基本信息",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "52px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "88px",
+              "width": "420px",
+              "height": "96px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "p-mpgla9qz-zwyg3m",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "线性回归用于从房屋特征中预测连续房价 。",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "18px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(71, 85, 105)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "208px",
+              "width": "420px",
+              "height": "56px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "cards-mpgla9qz-kj5v49",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgla9qz-dtfl1z",
+                "title": "实验名称",
+                "body": "简单线性回归房价预测实验",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "18px",
+                  "fontWeight": "800",
+                  "fontStyle": "",
+                  "color": "rgb(15, 23, 42)",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "15px",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "rgb(71, 85, 105)",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "50px",
+              "top": "308px",
+              "width": "404px",
+              "height": "92px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "cards-mpgla9qz-q40niz",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgla9qz-x0ju2f",
+                "title": "实验时长",
+                "body": "建议 2 学时，约 90 分钟。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "18px",
+                  "fontWeight": "800",
+                  "fontStyle": "",
+                  "color": "rgb(15, 23, 42)",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "15px",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "rgb(71, 85, 105)",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "470px",
+              "top": "308px",
+              "width": "404px",
+              "height": "92px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "cards-mpgla9qz-bcghf6",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgla9qz-mvurbe",
+                "title": "实验难度",
+                "body": "基础级。适合初次接触回归建模的学生。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "18px",
+                  "fontWeight": "800",
+                  "fontStyle": "",
+                  "color": "rgb(15, 23, 42)",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "15px",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "rgb(71, 85, 105)",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "50px",
+              "top": "416px",
+              "width": "404px",
+              "height": "92px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "cards-mpgla9qz-8jqopk",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgla9qz-x620mx",
+                "title": "实验环境",
+                "body": "Python 3.10+、Flask、NumPy、Pandas；",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "18px",
+                  "fontWeight": "800",
+                  "fontStyle": "",
+                  "color": "rgb(15, 23, 42)",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "15px",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "rgb(71, 85, 105)",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "470px",
+              "top": "416px",
+              "width": "404px",
+              "height": "92px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          }
+        ]
+      }
+    ]
+  },
+  "knowledge": {
+    "id": "knowledge",
+    "title": "前置知识",
+    "subtitle": "导数、误差、梯度下降三件事，要先用图讲明白。",
+    "slides": [
+      {
+        "id": "slide-mpgkpj8g-r8ruo2",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h2-mpgkpj8g-l1fows",
+            "type": "h2",
+            "kind": "",
+            "label": "",
+            "text": "前置知识",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "52px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "49px",
+              "top": "84px",
+              "width": "430px",
+              "height": "66px",
+              "zIndex": "98811"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "p-mpgmjuie-15tccs",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "进行本实验前,学生应掌握以下核心数学概念:",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "46px",
+              "top": "180px",
+              "width": "443px",
+              "height": "65px",
+              "zIndex": "16943"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "p-mpgmkmzw-fpzdzi",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "线性代数:矩阵乘法 $Y = XW + B$与向量的点 积运算。 微积分:导数的几何意义,以及偏导数在梯度计 算中的核心地位。 概率统计:变量间的相关系数计算,以及正态分 布对数据分布的影响。",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "47px",
+              "top": "260px",
+              "width": "454px",
+              "height": "213px",
+              "zIndex": "52525"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "cards-mpgmm5mj-x12po0",
+            "type": "cards",
+            "kind": "",
+            "label": "",
+            "text": "",
+            "title": "",
+            "body": "",
+            "items": [
+              {
+                "id": "card-mpgmm5mj-e3k5dm",
+                "title": "线性回归的核心",
+                "body": "是寻找自变量$X$与因变量 $y$ 之间的线性 依赖规律。其本质是寻求一组合适的参数向量,使得模型预测 值与实际观测值的整体偏差达到最小。",
+                "style": {},
+                "titleStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "bodyStyle": {
+                  "fontFamily": "",
+                  "fontSize": "",
+                  "fontWeight": "",
+                  "fontStyle": "",
+                  "color": "",
+                  "textAlign": ""
+                },
+                "position": null
+              }
+            ],
+            "style": {},
+            "position": {
+              "left": "563px",
+              "top": "205px",
+              "width": "358px",
+              "height": "140px",
+              "zIndex": "39609"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          }
+        ]
+      },
+      {
+        "id": "slide-mpgkpj8g-wbap47",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h2-mpgkpj8g-rn1rdj",
+            "type": "h2",
+            "kind": "",
+            "label": "",
+            "text": "文本内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "30px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "48px",
+              "width": "430px",
+              "height": "48px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "p-mpgkpj8g-14mosb",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "文本内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "18px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(51, 65, 85)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "144px",
+              "width": "430px",
+              "height": "190px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "visual-mpgkpj8g-9t6huo",
+            "type": "visual",
+            "kind": "error",
+            "label": "误差示意",
+            "text": "内容示意区",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "20px",
+              "fontWeight": "800",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": "left"
+            },
+            "position": {
+              "left": "550px",
+              "top": "136px",
+              "width": "310px",
+              "height": "220px",
+              "zIndex": "1"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "callout-mpgkpj8g-n7y3ne",
+            "type": "callout",
+            "kind": "",
+            "label": "",
+            "text": "提示内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "15px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(124, 92, 0)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "550px",
+              "top": "382px",
+              "width": "310px",
+              "height": "auto",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          }
+        ]
+      },
+      {
+        "id": "slide-mpgkpj8g-tgshfj",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h2-mpgkpj8g-ixbafr",
+            "type": "h2",
+            "kind": "",
+            "label": "",
+            "text": "文本内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "30px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "48px",
+              "width": "430px",
+              "height": "48px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "p-mpgkpj8g-givb68",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "文本内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "18px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(51, 65, 85)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "144px",
+              "width": "430px",
+              "height": "190px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "visual-mpgkpj8g-zikjbr",
+            "type": "visual",
+            "kind": "hill",
+            "label": "梯度下降",
+            "text": "内容示意区",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "20px",
+              "fontWeight": "800",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": "left"
+            },
+            "position": {
+              "left": "550px",
+              "top": "136px",
+              "width": "310px",
+              "height": "220px",
+              "zIndex": "1"
+            },
+            "src": "",
+            "alt": ""
+          },
+          {
+            "id": "callout-mpgkpj8g-0z9znz",
+            "type": "callout",
+            "kind": "",
+            "label": "",
+            "text": "提示内容",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "15px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(124, 92, 0)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "550px",
+              "top": "382px",
+              "width": "310px",
+              "height": "auto",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": ""
+          }
+        ]
+      }
+    ]
+  },
+  "dataset": {
+    "id": "dataset",
+    "title": "数据集",
+    "subtitle": "先读懂 Boston 数据字段，再看特征和房价的关系。",
+    "slides": [
+      {
+        "id": "slide-mpgo30vx-xif4tg",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h2-mpgo30vx-lxjwiw",
+            "type": "h2",
+            "kind": "",
+            "label": "",
+            "text": "Boston 数据字段怎么读",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "30px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "48px",
+              "width": "430px",
+              "height": "48px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          }
+        ]
+      },
+      {
+        "id": "slide-mpgo30vx-xw296g",
+        "layout": "default",
+        "components": [
+          {
+            "id": "h2-mpgo30vx-da061q",
+            "type": "h2",
+            "kind": "",
+            "label": "",
+            "text": "特征和房价散点图怎么看",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "30px",
+              "fontWeight": "900",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "48px",
+              "width": "430px",
+              "height": "48px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "p-mpgo30vx-swz7i3",
+            "type": "p",
+            "kind": "",
+            "label": "",
+            "text": "同学们看散点图时，不是只看点多不多，而是看整体趋势。RM 和 MEDV 通常呈现比较明显的正向关系；LSTAT 和 MEDV 往往更像反向关系。散点越有趋势，说明这个特征越可能对房价预测有帮助。",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "18px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(51, 65, 85)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "50px",
+              "top": "144px",
+              "width": "430px",
+              "height": "190px",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "visual-mpgo30vx-vz5rrx",
+            "type": "visual",
+            "kind": "scatter",
+            "label": "散点关系",
+            "text": "图：特征与房价散点图。老师会重点讲 RM、LSTAT 这两类典型特征。\n课堂示意图",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "20px",
+              "fontWeight": "800",
+              "fontStyle": "",
+              "color": "rgb(15, 23, 42)",
+              "textAlign": "left"
+            },
+            "position": {
+              "left": "550px",
+              "top": "136px",
+              "width": "310px",
+              "height": "220px",
+              "zIndex": "1"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          },
+          {
+            "id": "callout-mpgo30vx-rr65tu",
+            "type": "callout",
+            "kind": "",
+            "label": "",
+            "text": "图：特征与房价散点图。老师会重点讲 RM、LSTAT 这两类典型特征。",
+            "title": "",
+            "body": "",
+            "items": [],
+            "style": {
+              "fontFamily": "",
+              "fontSize": "15px",
+              "fontWeight": "",
+              "fontStyle": "",
+              "color": "rgb(124, 92, 0)",
+              "textAlign": ""
+            },
+            "position": {
+              "left": "550px",
+              "top": "382px",
+              "width": "310px",
+              "height": "auto",
+              "zIndex": "2"
+            },
+            "src": "",
+            "alt": "",
+            "chartSpec": null
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from flask import Flask, render_template, request, jsonify
 
 from core.context_store import get_context
@@ -22,9 +25,31 @@ app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.json.sort_keys = False
 
+BASE_DIR = Path(__file__).resolve().parent
+THEORY_DECK_OVERRIDES_PATH = BASE_DIR / "static" / "theory_deck_overrides.json"
+
 
 JSON_ACTION_HANDLERS = dict(JSON_ACTIONS)
 FORM_ACTION_HANDLERS = {"upload_dataset": model_upload_dataset}
+
+
+def _read_theory_deck_overrides():
+    if not THEORY_DECK_OVERRIDES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(THEORY_DECK_OVERRIDES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_theory_deck_overrides(overrides):
+    THEORY_DECK_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    THEORY_DECK_OVERRIDES_PATH.write_text(
+        json.dumps(overrides, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
 
 def _json_action_response(handler, payload, experiment_id=None):
     try:
@@ -224,6 +249,39 @@ def api_run_action():
         return _json_action_response(handler, payload, experiment["id"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/theory_deck_overrides", methods=["GET"])
+def api_theory_deck_overrides():
+    try:
+        return jsonify({
+            "overrides": _read_theory_deck_overrides(),
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/theory_deck_overrides", methods=["POST"])
+def api_save_theory_deck_override():
+    try:
+        body = request.get_json() or {}
+        page_id = body.get("page_id")
+        deck = body.get("deck")
+        if not isinstance(page_id, str) or not page_id.strip():
+            return jsonify({"error": "缺少 page_id"}), 400
+        if not isinstance(deck, dict):
+            return jsonify({"error": "deck 必须是对象"}), 400
+
+        overrides = _read_theory_deck_overrides()
+        overrides[page_id] = deck
+        _write_theory_deck_overrides(overrides)
+        return jsonify({
+            "page_id": page_id,
+            "deck": deck,
+            "saved": True,
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

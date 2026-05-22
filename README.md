@@ -1,18 +1,19 @@
 # 简单线性回归教学实验
 
-这是一个面向初学者的简单线性回归 Web 教学实验。项目用 Flask 提供后端接口，用原生 JavaScript、ECharts 和 GridStack 构建前端交互，让学生在同一个页面里完成数据预处理、模型训练、模型评估和模型预测，并能按步骤查看对应的核心机器学习代码。
+这是一个面向初学者的简单线性回归 Web 教学实验。项目使用 Flask 提供后端接口，前端使用原生 JavaScript、ECharts、ECharts GL、GridStack 和可编辑课件式理论页，帮助学生完成从理论理解到实验操作、再到测试反馈的完整学习流程。
 
-项目定位不是“展示一整份工程源码”，而是“先看实验现象，再展开当前步骤代码”。因此每个关键操作旁边都提供“查看代码”入口，代码以 Python / NumPy 风格呈现，重点解释线性回归逻辑，而不是前端实现细节。
+项目定位不是展示完整工程源码，而是让学生先观察实验现象，再在当前步骤查看对应的 Python / NumPy 风格核心代码。
 
 ## 当前能力
 
-- 理论部分：展示实验基本信息、实验目的、前置知识、模型介绍、数据集、训练模型、学习准则、参数优化、评价指标、预测结果和思考拓展。
-- 数据预处理：加载 Boston Housing 数据集，查看数据详情，观察原始数据可视化，执行 z-score 标准化，观察标准化后的数据。
-- 模型训练：支持回归过程、预处理影响、损失函数、优化准则和自定义参数训练等教学步骤。
-- 模型评估：展示当前训练模型的拟合效果，并提供 RMSE、MAE、R² 指标解释。
-- 模型预测：基于当前训练帧的 w、b 和特征列输入新样本，展示预测可视化、原始散点图和预测计算过程。
-- 代码解释层：预处理、训练、评估、预测页面均提供“查看代码”按钮，右侧抽屉显示当前步骤的核心代码、操作说明、逐行解释和复制按钮。
-- 交互状态：训练参数、预测输入、评估指标模式、图表布局等状态在前端内存中维护，页面切换时尽量保持教学上下文。
+- 理论部分：提供实验基本信息、实验目的、前置知识、数据集、训练模型、学习准则、参数优化、评价指标、预期成果和思考拓展等课件式页面。
+- 理论课件编辑：理论页支持只读查看、编辑课件、导出 PDF，并通过 `/api/theory_deck_overrides` 保存页面覆盖数据。
+- 数据预处理：加载 Boston Housing 数据集，查看数据详情、原始数据可视化、z-score 标准化和标准数据可视化。
+- 模型训练：支持回归过程、预处理影响、损失函数、优化准则和自定义参数训练。
+- 模型评估：展示当前训练模型的拟合效果，并解释 RMSE、MAE、R²。
+- 模型预测：基于当前模型参数 `w`、`b` 和输入特征值 `x` 计算预测 MEDV，并展示预测可视化和计算过程。
+- 代码解释层：预处理、训练、评估、预测页面均提供“查看代码”入口，展示当前步骤的核心代码、操作说明和解释。
+- 实验测试：左侧新增“实验测试”入口，按完整实验流程引导学生完成测试题，并生成成绩和答题详情。
 
 ## 运行方式
 
@@ -27,69 +28,37 @@ python app.py
 http://127.0.0.1:5000/
 ```
 
-前端依赖通过 CDN 引入，主要包括：
-
-```text
-echarts
-echarts-gl
-gridstack
-```
-
 ## 项目结构
 
 ```text
 simple_linear_regression/
-├── app.py
-├── requirements.txt
-├── README.md
-├── web_ui_structure_cn.md
-├── core/
-│   ├── chart_registry.py
-│   ├── context_store.py
-│   ├── control_registry.py
-│   ├── data_utils.py
-│   ├── dataset_profile.py
-│   ├── experiment_registry.py
-│   ├── registry.py
-│   └── schemas.py
-├── datasets/
-│   ├── raw/
-│   │   └── boston_housing.csv
-│   └── preprocessed/
-│       └── boston_housing_preprocessed.csv
-├── models/
-│   └── simple_linear_regression/
-│       ├── dataset.py
-│       ├── model.py
-│       ├── controls/
-│       │   ├── evaluate.py
-│       │   ├── predict.py
-│       │   ├── preprocess.py
-│       │   └── train_eval.py
-│       └── charts/
-│           ├── evaluate/
-│           ├── predict/
-│           ├── preprocess/
-│           └── train_eval/
-├── static/
-│   ├── assets/
-│   ├── theory-html/
-│   └── js/
-│       ├── api.js
-│       ├── app_shell.js
-│       ├── chart_renderers.js
-│       ├── control_renderers.js
-│       ├── evaluate_page.js
-│       ├── experiment_runtime.js
-│       ├── predict_page.js
-│       ├── preprocess_page.js
-│       ├── schema_registry.js
-│       ├── state_runtime.js
-│       ├── theory_page.js
-│       ├── train_page.js
-│       └── view_renderers.js
-└── templates/
-    └── index.html
+├─ app.py
+├─ requirements.txt
+├─ README.md
+├─ web_ui_structure_cn.md
+├─ core/
+├─ datasets/
+├─ models/simple_linear_regression/
+│  ├─ model.py
+│  ├─ dataset.py
+│  ├─ controls/
+│  └─ charts/
+├─ static/
+│  ├─ aiLogo-Cusx885-.png
+│  ├─ theory_deck_overrides.json
+│  ├─ theory-html/
+│  └─ js/
+│     ├─ app_shell.js
+│     ├─ experiment_test.js
+│     ├─ theory_page.js
+│     ├─ theory_page_registry.js
+│     ├─ theory-pages/
+│     ├─ preprocess_page.js
+│     ├─ train_page.js
+│     ├─ evaluate_page.js
+│     └─ predict_page.js
+└─ templates/
+   └─ index.html
 ```
 
 ## 数据集约定
@@ -107,7 +76,7 @@ datasets/preprocessed/boston_housing_preprocessed.csv
 CRIM, ZN, INDUS, CHAS, NOX, RM, AGE, DIS, RAD, TAX, PTRATIO, B, LSTAT, MEDV
 ```
 
-当前实验默认将 `MEDV` 作为目标值 y，其余数值列作为输入特征 X。标准化实验中，特征列和目标列都会进入 z-score 标准化流程：
+当前实验默认将 `MEDV` 作为目标值 `y`，其余数值列作为输入特征 `X`。标准化使用 z-score：
 
 ```python
 z = (x - mean) / std
@@ -123,9 +92,30 @@ y_raw_pred = y_std_pred * target_std + target_mean
 
 ## 主要页面
 
+### 理论部分
+
+理论部分由以下文件组成：
+
+```text
+static/js/theory_page_registry.js
+static/js/theory-pages/*.js
+static/js/theory_page.js
+static/theory_deck_overrides.json
+```
+
+理论页使用课件式渲染，支持：
+
+- 只读浏览
+- 编辑课件内容
+- 插入文本、卡片、公式、图表和图片
+- 保存覆盖数据
+- 导出 PDF
+
+如果 `theory_deck_overrides.json` 中某个页面覆盖数据不完整，运行时会回退到 `static/js/theory-pages/` 中的默认页面配置，避免出现只有标题、正文空白的情况。
+
 ### 数据预处理
 
-数据预处理页按 5 个步骤组织：
+步骤：
 
 ```text
 01 加载原始数据
@@ -135,17 +125,11 @@ y_raw_pred = y_std_pred * target_std + target_mean
 05 标准数据可视化
 ```
 
-适合展示的核心代码包括：
-
-- 加载数据：读取 CSV，拆分 X/y。
-- 数据统计：样本数量、特征数量、缺失值、重复值、describe 统计。
-- 原始可视化：选择当前特征和目标列绘制散点图。
-- 数据标准化：计算 mean/std 并进行 z-score 转换。
-- 标准化可视化：使用标准化后的特征和目标值绘制图表。
+核心代码内容包括读取 CSV、拆分特征和目标列、统计缺失值和重复值、绘制散点图、计算 mean/std、执行 z-score 标准化。
 
 ### 模型训练
 
-模型训练页按教学目标分为：
+步骤：
 
 ```text
 01 熟悉回归过程
@@ -157,172 +141,66 @@ y_raw_pred = y_std_pred * target_std + target_mean
 
 核心概念包括：
 
-- 预测函数：`y_pred = w * x + b`
-- 损失函数：`MSE = mean((y - y_pred) ** 2)`
-- 梯度下降：沿负梯度方向更新 `w` 和 `b`
-- 参数轨迹：观察 w、b、loss 随 epoch 的变化
-- 预处理影响：对比原始特征训练和标准化特征训练
-
-自定义参数训练会把当前特征、初始 w、初始 b、学习率、训练轮数等配置联动到代码面板中，让学生看到“当前操作对应的代码”。
+```python
+y_pred = w * x + b
+loss = np.mean((y - y_pred) ** 2)
+w = w - learning_rate * dw
+b = b - learning_rate * db
+```
 
 ### 模型评估
 
-模型评估页复用当前训练得到的模型参数，展示：
-
-- 拟合效果图
-- RMSE
-- MAE
-- R²
-
-指标代码示例：
+评估页展示当前模型的拟合效果，并支持 RMSE、MAE、R² 指标解释：
 
 ```python
 mse = np.mean((y - y_pred) ** 2)
 rmse = np.sqrt(mse)
 mae = np.mean(np.abs(y - y_pred))
-ss_res = np.sum((y - y_pred) ** 2)
-ss_tot = np.sum((y - np.mean(y)) ** 2)
 r2 = 1 - ss_res / ss_tot
 ```
 
 ### 模型预测
 
-模型预测页使用当前训练页的模型状态。右侧控制面板包含：
+预测页使用当前训练得到的 `w`、`b` 和输入特征值 `x`：
 
-- 当前模型：来源、特征、w、b。
-- 特征选择：跟随训练页当前特征，只读展示。
-- 输入类型：原始特征值或标准特征值。
-- 输入特征值：普通文本输入框，不使用数字步进箭头。
-- 开始预测：只有点击按钮或在输入框按 Enter 时才更新预测结果。
-- 查看预测代码：打开预测代码抽屉。
-
-预测页有一个重要交互规则：修改输入框内容时，中间图表和计算过程保持不变，不自动恢复默认，也不自动展示新结果。只有触发“开始预测”后，才更新预测点、预测值和计算过程。
-
-## 代码解释层设计
-
-代码展示使用右侧抽屉，而不是占用主图表区域。抽屉结构固定为：
-
-```text
-当前步骤代码
-├── 当前操作
-├── 核心代码
-├── 代码解释
-└── 复制代码
+```python
+y_pred = w * x + b
 ```
 
-交互规则：
+页面规则：
 
-- 点击“查看代码”打开抽屉。
-- 代码抽屉只通过右上角 `x` 关闭。
-- 点击页面其他区域不会关闭抽屉，避免学生阅读代码时误触导致面板消失。
-- 代码片段控制在教学友好的长度，优先展示机器学习逻辑。
-- 默认展示 Python / NumPy 风格代码，不展示 React、ECharts 或 GridStack 配置。
+- 修改输入框不会自动刷新预测结果。
+- 只有点击“开始预测”或在输入框按 Enter，才更新预测点、预测 MEDV 和计算过程。
+- “开始预测”和“查看预测代码”在同一个按钮容器内，保持等宽和统一间距。
 
-## API
+## 实验测试模块
 
-```text
-GET  /
-GET  /api/experiments
-GET  /api/dataset_profile?experiment=<experiment>
-GET  /api/page_schema?experiment=<experiment>&page=<page>
-GET  /api/chart_registry?experiment=<experiment>&page=<page>
-POST /api/run_action
-POST /api/chart_data
-```
-
-当前实验 ID：
+左侧实验部分新增“实验测试”入口。流程为：
 
 ```text
-simple_linear_regression
-```
-
-主要 action：
-
-```text
-load_dataset
-data_view
-standardize_dataset
-prepare_train
-predict
-```
-
-## 前后端职责
-
-- `app.py`：Flask 路由入口，提供页面、实验配置、图表数据和动作执行接口。
-- `core/`：实验注册、页面 schema、图表注册、控制面板注册、上下文存储等通用能力。
-- `models/simple_linear_regression/model.py`：数据加载、标准化、训练、预测等核心实验逻辑。
-- `models/simple_linear_regression/charts/`：各页面图表数据构造器。
-- `models/simple_linear_regression/controls/`：各页面右侧控制面板 schema。
-- `static/js/preprocess_page.js`：数据预处理页流程、图表和代码面板。
-- `static/js/train_page.js`：训练页步骤、动画、对比、损失、优化和代码面板。
-- `static/js/evaluate_page.js`：评估页图表、指标切换和代码面板。
-- `static/js/predict_page.js`：预测页基础图表、预测状态、输入交互和代码面板。
-- `templates/index.html`：整体布局、样式、侧边栏、右侧面板和脚本引入。
-
-## 验证命令
-
-```bash
-python -m compileall app.py core models
-node --check static/js/api.js
-node --check static/js/app_shell.js
-node --check static/js/chart_renderers.js
-node --check static/js/control_renderers.js
-node --check static/js/evaluate_page.js
-node --check static/js/experiment_runtime.js
-node --check static/js/predict_page.js
-node --check static/js/preprocess_page.js
-node --check static/js/schema_registry.js
-node --check static/js/state_runtime.js
-node --check static/js/theory_page.js
-node --check static/js/train_page.js
-node --check static/js/view_renderers.js
-```
-
-## 维护建议
-
-- 新增教学步骤时，优先补齐“现象展示、参数控制、代码解释、逐行解释”四件事。
-- 新增代码片段时，保持短小、聚焦、动态联动当前参数。
-- 预测相关交互要避免“输入即预测”，因为教学上应让学生明确区分“修改输入”和“执行预测”。
-- 如果调整右侧控制面板按钮布局，尽量让同组按钮处于同一个父容器中，用统一 `gap` 管理间距，避免按钮宽度和间距不一致。
-- 如果未来需要展示前端实现代码，可以单独增加“实现代码”模式，不要混入默认机器学习教学代码。
-## 实验测试模块补充
-
-项目新增“实验测试”入口，用于在不破坏原有实验页面的前提下，引导学生按完整实验流程完成一次测试。
-
-### 测试流程
-
-```text
-点击左侧“实验测试”
+实验测试
 -> 查看测试说明
--> 点击右侧“开始实验测试”
--> 系统重置数据预处理、模型训练、模型评估、模型预测四个模块状态
+-> 开始实验测试
 -> 自动进入第一个测试节点
--> 学生在原实验页面完成观察或操作
+-> 学生在原实验页操作
 -> 点击右侧“查看测试内容”
--> 在弹窗中完成当前节点题目
--> 提交后查看反馈
--> 进入下一测试节点
+-> 弹窗答题
+-> 提交并查看反馈
+-> 进入下一题
 -> 最后一题提交后显示测试结果
 ```
 
-### 当前测试题组织
+测试模式特点：
 
-测试题绑定到具体页面和步骤，普通实验模式下不显示测试按钮。测试模式下，右侧控制面板主卡片标题下方会出现“查看测试内容”按钮。
+- 普通实验模式下不显示测试按钮。
+- 测试模式下，右侧控制面板主卡片标题下方显示“查看测试内容”。
+- 右侧原有控制面板功能保持不变。
+- 左侧实验导航和顶部步骤条在测试模式下锁定。
+- 同一页面同一步骤的多道题会合并到同一个弹窗中。
+- 提交后关闭弹窗再打开，会保持已提交反馈状态。
+- 最后一题提交后直接显示结果弹窗和结果页。
 
-当前覆盖节点包括：
-
-```text
-数据预处理：加载原始数据、数据详情、原始数据可视化、数据标准化、标准数据可视化
-模型训练：熟悉回归过程、熟悉预处理影响、熟悉损失函数、熟悉优化准则、自定义参数训练
-模型评估：评估指标
-模型预测：模型预测
-```
-
-同一页面同一步骤如果包含多道题，会在同一个测试弹窗中一次展示、一次提交，避免学生连续点击右侧按钮打开多个题目弹窗。
-
-### 测试状态
-
-前端新增测试状态：
+测试状态保存在前端：
 
 ```js
 experimentTestStateV1 = {
@@ -338,29 +216,66 @@ experimentTestStateV1 = {
 }
 ```
 
-其中 `records` 用于结果页展示每道题的题目、学生答案、正确答案、是否正确和解析。
-
-### 文件补充
-
-新增前端测试流程文件：
+## API
 
 ```text
-static/js/experiment_test.js
+GET  /
+GET  /api/experiments
+GET  /api/dataset_profile?experiment=<experiment>
+GET  /api/page_schema?experiment=<experiment>&page=<page>
+GET  /api/chart_registry?experiment=<experiment>&page=<page>
+GET  /api/theory_deck_overrides
+POST /api/theory_deck_overrides
+POST /api/run_action
+POST /api/chart_data
 ```
 
-该文件负责：
+当前实验 ID：
 
-- 测试题配置 `EXPERIMENT_TEST_FLOW`
-- 测试开始、重置、退出和完成
-- 当前测试节点跳转
-- “查看测试内容”按钮注入
-- 测试弹窗渲染、提交、反馈恢复
-- 最终结果弹窗和结果页渲染
-- 测试模式下左侧导航和顶部步骤条锁定
+```text
+simple_linear_regression
+```
 
-### 维护建议
+## 验证命令
 
-- 新增测试题时，优先通过 `EXPERIMENT_TEST_FLOW` 配置完成，不要改动原实验页面逻辑。
-- 同一 `page + step` 的连续题目会自动合并到同一个弹窗。
-- 测试模式只增加测试入口和测试弹窗，原右侧控制面板功能应继续保留。
-- 开始实验测试时会重置四个实验模块状态，避免沿用自由实验中的旧结果。
+```bash
+python -m compileall app.py core models
+node --check static/js/api.js
+node --check static/js/app_shell.js
+node --check static/js/chart_renderers.js
+node --check static/js/control_renderers.js
+node --check static/js/evaluate_page.js
+node --check static/js/experiment_runtime.js
+node --check static/js/experiment_test.js
+node --check static/js/predict_page.js
+node --check static/js/preprocess_page.js
+node --check static/js/schema_registry.js
+node --check static/js/state_runtime.js
+node --check static/js/theory_page.js
+node --check static/js/theory_page_registry.js
+node --check static/js/train_page.js
+node --check static/js/view_renderers.js
+```
+
+理论拆分页也应检查：
+
+```bash
+node --check static/js/theory-pages/basic.js
+node --check static/js/theory-pages/purpose.js
+node --check static/js/theory-pages/knowledge.js
+node --check static/js/theory-pages/dataset.js
+node --check static/js/theory-pages/model.js
+node --check static/js/theory-pages/criterion.js
+node --check static/js/theory-pages/optimization.js
+node --check static/js/theory-pages/evaluation.js
+node --check static/js/theory-pages/result.js
+node --check static/js/theory-pages/thinking.js
+```
+
+## 维护建议
+
+- 理论部分以 `static/js/theory-pages/*.js` 和 `static/theory_deck_overrides.json` 为主，不要只同步其中一个。
+- 修改理论页样式时，要同步检查 `templates/index.html` 中 `.theory-*` 相关 CSS。
+- 新增测试题优先修改 `static/js/experiment_test.js` 中的 `EXPERIMENT_TEST_FLOW`。
+- 测试模式只添加测试入口和弹窗，不应替换原实验右侧控制面板。
+- 开始实验测试时应重置四个实验模块状态，避免沿用自由实验中的旧结果。
