@@ -9,5 +9,6 @@
 #   gridstack
 
 Flask>=3.0,<4.0
+gunicorn>=21.2,<23.0
 numpy>=1.24,<3.0
 pandas>=2.0,<3.0
