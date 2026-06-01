@@ -15,6 +15,7 @@ async function renderPredictShell() {
   predictRenderViewsKey = "";
   $("main").innerHTML = `<div class="dashboard-grid grid-stack" id="predictWrap"></div>`;
   $("rightPanel").innerHTML = renderPredictPanel();
+  bindGuideControls?.();
   bindPredictCodeButtons();
   syncPredictPanelWithTrainModel();
   $("predictRun")?.addEventListener("click", loadPrediction);
@@ -30,6 +31,7 @@ async function renderPredictShell() {
 function renderPredictPanel() {
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card predict-control-card">
       <h3>\u6a21\u578b\u9884\u6d4b</h3>
       <div class="mini-stats">

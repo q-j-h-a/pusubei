@@ -267,6 +267,7 @@ async function renderTrainCurrentStep() {
     trainCompareEntered = true;
   }
   $("rightPanel").innerHTML = renderTrainStepPanel();
+  bindGuideControls?.();
   bindTrainStepPanel();
   if (activeTrainStep === "preprocess_effect") {
     await prepareTrainCompare();
@@ -317,6 +318,7 @@ function renderTrainStepPanel() {
   const fixed = activeTrainStep !== "custom";
   return `
     <div class="right-title">\u6a21\u578b\u8bad\u7ec3</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>${escapeHtml(trainStepLabel())}</h3>
       <div class="mini-stats">
@@ -352,6 +354,7 @@ function renderRegressionProcessPanel() {
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u56de\u5f52\u8fc7\u7a0b</h3>
       <div class="control-group">
@@ -386,6 +389,7 @@ function renderPreprocessEffectPanel() {
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u9884\u5904\u7406\u7684\u5f71\u54cd</h3>
       <div class="control-group">
@@ -420,6 +424,7 @@ function renderLossFunctionPanel() {
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u635f\u5931\u51fd\u6570</h3>
       <div class="control-group">
@@ -454,6 +459,7 @@ function renderOptimizationCriterionPanel() {
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u4f18\u5316\u51c6\u5219</h3>
       <div class="control-group">
@@ -490,6 +496,7 @@ function renderCustomParameterPanel() {
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u81ea\u5b9a\u4e49\u53c2\u6570\u8bad\u7ec3</h3>
       <div class="control-group">

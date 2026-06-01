@@ -14,6 +14,7 @@ function evaluateMetricMode() {
 function evaluatePanelHtml() {
   return `
     <div class="right-title">\u63a7\u5236\u9762\u677f</div>
+    ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u8bc4\u4f30\u6307\u6807\u4ee3\u7801</h3>
       ${evaluateCodeButtonHtml()}
@@ -52,6 +53,7 @@ async function renderEvaluateShell() {
   });
   document.querySelector(".shell").classList.remove("theory");
   $("rightPanel").innerHTML = evaluatePanelHtml();
+  bindGuideControls?.();
   bindEvaluateCodeButtons();
   if (!trainData) {
     evaluateEmptyState();
