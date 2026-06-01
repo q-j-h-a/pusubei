@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
+<html lang="zh-CN"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验背景与目标：波士顿房价预测</title>
@@ -15,9 +14,9 @@
             chtml: { displayAlign: 'left' }
         };
     </script>
-    <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script async="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     
     <style>
         :root {
@@ -59,41 +58,34 @@
 </head>
 <body>
 
-    <div class="content-container">
-        
-        <h1>实验背景：波士顿房价预测与自动估值</h1>
-        
-        <p>在本次实验中，使用经典的<strong>波士顿房价数据集（Boston Housing Dataset）</strong>，从零开始推导并构建一个能够自动评估房产价值的机器学习模型。</p>
-
-        <h2>1. 业务场景：为什么要用 AI 评估房价？</h2>
-        <p>在传统的房地产行业中，房屋的估值通常依赖于评估师的个人经验。这种人工方式不仅效率低下，而且极易受到主观因素的干扰。为了解决这一痛点，现代科技公司引入了<strong>自动估值模型（Automated Valuation Model, AVM）</strong>。通过输入房屋的各项客观特征（如面积、房龄、社区属性等），让 AI 算法在毫秒内给出极其精准的预测价格。</p>
-
-        <h2>2. 核心概念：监督学习与回归</h2>
-        <p>为了让计算机具备预测房价的能力，我们需要给它提供大量的“历史参考资料”——即已知特征和对应真实价格的房屋数据。这种利用已知“标准答案”来训练模型的方式，在机器学习中被称为<strong>监督学习（Supervised Learning）</strong>。</p>
-
-        <div class="academic-quote">
-            <strong>核心区分：回归 (Regression) vs 分类 (Classification)</strong>
-            <ul>
-                <li><strong>分类：</strong> 模型的预测结果为离散的类别。例如预测房屋是否属于“优质学区”（是/否）。</li>
-                <li><strong>回归：</strong> 模型的预测结果为连续变化的数值。在本次实验中，我们要预测具体的房价（如 23.5 万美元），因此这是一个标准的回归任务。</li>
-            </ul>
-        </div>
-
-        <p>从宏观的系统输入输出视角来看，整个实验的计算流程可以用如下数学映射来表示：</p>
-
-        <div class="math-display">
-            $$ \underbrace{\mathbf{X} \in \mathbb{R}^{m \times d}}_{\text{多维房屋特征矩阵 (输入)}} \xrightarrow{\text{ 线性回归模型 } f(\mathbf{X})} \underbrace{\mathbf{\hat{y}} \in \mathbb{R}^{m}}_{\text{连续房价预测值 (输出)}} $$
-        </div>
-
-        <h2>3. 实验工程路线图</h2>
-        <p>构建一个完整的工业级 AI 模型绝不仅仅是调用一个公式。这个实验会按真实项目的推进方式展开：先看清数据，再把模型搭起来，接着让它学会优化，最后检查效果并解释结果。</p>
-        <p><strong>先做数据探索与特征工程。</strong> 你会先了解数据集的基本情况，看看哪些特征和房价更相关，并完成必要的预处理，比如特征标准化。</p>
-        <p><strong>然后定义模型结构和损失函数。</strong> 这里会把数学表达落到代码里，用矩阵运算实现前向传播，同时定义用来衡量误差的均方误差（MSE）。</p>
-        <p><strong>接着处理优化和参数更新。</strong> 你会手写梯度下降（Gradient Descent）过程，观察模型是怎样在一次次迭代中慢慢把误差压下去的。</p>
-        <p><strong>最后做模型评估与业务解释。</strong> 我们会用 RMSE 、MSE、 $R^2$ 来看模型到底准不准，也会结合特征权重去理解它为什么会这样预测。</p>
+    <div class="content-container"><h1>实验背景：波士顿房价预测与自动估值</h1>
+<p>在本次实验中，使用经典的<strong>波士顿房价数据集（Boston Housing Dataset）</strong>，从零开始推导并构建一个能够自动评估房产价值的机器学习模型。</p>
+<h2>1. 业务场景：为什么要用 AI 评估房价？</h2>
+<p>在传统的房地产行业中，房屋的估值通常依赖于评估师的个人经验。这种人工方式不仅效率低下，而且极易受到主观因素的干扰。为了解决这一痛点，现代科技公司引入了<strong>自动估值模型（Automated Valuation Model, AVM）</strong>。通过输入房屋的各项客观特征（如面积、房龄、社区属性等），让 AI 算法在毫秒内给出极其精准的预测价格。</p>
+<h2>2. 核心概念：监督学习与回归</h2>
+<p>为了让计算机具备预测房价的能力，我们需要给它提供大量的“历史参考资料”——即已知特征和对应真实价格的房屋数据。这种利用已知“标准答案”来训练模型的方式，在机器学习中被称为<strong>监督学习（Supervised Learning）</strong>。</p>
+<div class="academic-quote">
+<p> <strong>核心区分：回归 (Regression) vs 分类 (Classification)</strong></p>
+<ul>
+    <li>               - <strong>分类：</strong> 模型的预测结果为离散的类别。例如预测房屋是否属于“优质学区”（是/否）。</li>
+</ul>
+<ul>
+    <li>               - <strong>回归：</strong> 模型的预测结果为连续变化的数值。在本次实验中，我们要预测具体的房价（如 23.5 万美元），因此这是一个标准的回归任务。</li>
+</ul>
+</div>
+<p>从宏观的系统输入输出视角来看，整个实验的计算流程可以用如下数学映射来表示：</p>
+<div class="math-display">
+    $$
+    \underbrace{\mathbf{X} \in \mathbb{R}^{m \times d}}_{\text{多维房屋特征矩阵 (输入)}} \xrightarrow{\text{ 线性回归模型 } f(\mathbf{X})} \underbrace{\mathbf{\hat{y}} \in \mathbb{R}^{m}}_{\text{连续房价预测值 (输出)}}
+    $$
+</div>
+<h2>3. 实验工程路线图</h2>
+<p>构建一个完整的工业级 AI 模型绝不仅仅是调用一个公式。这个实验会按真实项目的推进方式展开：先看清数据，再把模型搭起来，接着让它学会优化，最后检查效果并解释结果。</p>
+<p><strong>先做数据探索与特征工程。</strong> 你会先了解数据集的基本情况，看看哪些特征和房价更相关，并完成必要的预处理，比如特征标准化。</p>
+<p><strong>然后定义模型结构和损失函数。</strong> 这里会把数学表达落到代码里，用矩阵运算实现前向传播，同时定义用来衡量误差的均方误差（MSE）。</p>
+<p><strong>接着处理优化和参数更新。</strong> 你会手写梯度下降（Gradient Descent）过程，观察模型是怎样在一次次迭代中慢慢把误差压下去的。</p>
+<p><strong>最后做模型评估与业务解释。</strong> 我们会用 RMSE 、MSE、 $R^2$ 来看模型到底准不准，也会结合特征权重去理解它为什么会这样预测。</p>
+</div>
 
 
-    </div>
-
-</body>
-</html>
+</body></html>

@@ -286,5 +286,35 @@ def api_save_theory_deck_override():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/save_theory_html", methods=["POST"])
+def api_save_theory_html():
+    try:
+        body = request.get_json() or {}
+        page_id = body.get("page_id")
+        full_html = body.get("html")
+        if not isinstance(page_id, str) or not page_id.strip():
+            return jsonify({"error": "缺少 page_id"}), 400
+        if not isinstance(full_html, str) or not full_html.strip():
+            return jsonify({"error": "html 必须是字符串"}), 400
+
+        safe_page_id = Path(page_id).name
+        html_path = BASE_DIR / "static" / "theory-html" / f"{safe_page_id}.html"
+
+        if not html_path.exists():
+            return jsonify({"error": f"该页面不存在: {page_id}"}), 404
+
+        if not full_html.lstrip().startswith("<!DOCTYPE"):
+            full_html = "<!DOCTYPE html>\n" + full_html
+
+        html_path.write_text(full_html, encoding="utf-8")
+        return jsonify({
+            "page_id": page_id,
+            "saved": True,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+

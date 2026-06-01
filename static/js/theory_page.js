@@ -536,7 +536,20 @@ function makeLearningFlowChartOption(chartSpec = {}, options = {}) {
 }
 
 function makeDatasetHistogramChartOption(chartSpec = {}, options = {}) {
-  const bins = Array.isArray(chartSpec.bins) ? chartSpec.bins : [];
+  const bins = Array.isArray(chartSpec.bins) && chartSpec.bins.length 
+    ? chartSpec.bins 
+    : [
+        { label: "5-10", count: 8 },
+        { label: "10-15", count: 25 },
+        { label: "15-20", count: 68 },
+        { label: "20-25", count: 95 },
+        { label: "25-30", count: 52 },
+        { label: "30-35", count: 30 },
+        { label: "35-40", count: 18 },
+        { label: "40-45", count: 12 },
+        { label: "45-50", count: 9 },
+        { label: "50+", count: 16 }
+      ];
   const labels = bins.map(bin => bin.label);
   const values = bins.map(bin => Number(bin.count) || 0);
   return {
@@ -575,7 +588,13 @@ function makeDatasetHistogramChartOption(chartSpec = {}, options = {}) {
 }
 
 function makeDatasetScatterChartOption(chartSpec = {}, options = {}) {
-  const points = Array.isArray(chartSpec.points) ? chartSpec.points : [];
+  const points = Array.isArray(chartSpec.points) && chartSpec.points.length 
+    ? chartSpec.points 
+    : [
+        [5.5, 18.0], [5.8, 20.0], [6.0, 22.5], [6.2, 21.0], [6.4, 25.0],
+        [6.6, 28.0], [6.8, 30.0], [7.0, 32.5], [7.2, 35.0], [7.5, 42.0],
+        [7.8, 48.0], [5.6, 17.5], [5.9, 19.5], [6.3, 24.0], [6.7, 27.5]
+      ];
   return {
     animation: !options.staticMode,
     animationDuration: 700,
@@ -1233,7 +1252,19 @@ function makeR2ScaleChartOption(chartSpec = {}, options = {}) {
 }
 
 function resolveTheoryChartOption(component, options = {}) {
-  const kind = component.chartSpec?.kind || component.kind || "learningflow";
+  let kind = component.chartSpec?.kind || component.kind || "learningflow";
+  
+  // Align standard slide visual/chart kind mappings
+  if (kind === "scatter") kind = "dataset-scatter";
+  if (kind === "datasetmap") kind = "dataset-training-flow";
+  if (kind === "pipeline" || kind === "resultflow") kind = "model-training-flow";
+  if (kind === "loss" || kind === "losstrain") kind = "loss-curve";
+  if (kind === "error") kind = "error-square-amplify";
+  if (kind === "fitanimate") kind = "regression-fit";
+  if (kind === "hill" || kind === "contour") kind = "gradient-descent-path";
+  if (kind === "lrcompare") kind = "learning-rate-compare";
+  if (kind === "metriccards") kind = "r2-scale";
+  
   if (kind === "dataset-histogram") return makeDatasetHistogramChartOption(component.chartSpec || {}, options);
   if (kind === "dataset-scatter") return makeDatasetScatterChartOption(component.chartSpec || {}, options);
   if (kind === "dataset-training-flow") return makeDatasetTrainingFlowChartOption(component.chartSpec || {}, options);
@@ -1482,16 +1513,1074 @@ function renderTheoryEntry(pageId) {
   `;
 }
 
+function renderPageCharts(topicId) {
+  return new Promise((resolve) => {
+    const topicsWithCharts = ["knowledge", "dataset", "model", "criterion", "optimization", "evaluation", "result", "thinking"];
+    if (!topicsWithCharts.includes(topicId)) {
+      resolve({});
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.width = "640";
+    iframe.height = "340";
+    iframe.style.position = "absolute";
+    iframe.style.left = "-9999px";
+    iframe.style.top = "-9999px";
+    iframe.style.width = "640px";
+    iframe.style.height = "340px";
+    iframe.style.visibility = "hidden";
+    document.body.appendChild(iframe);
+    
+    let resolved = false;
+    let attempts = 0;
+    const maxAttempts = 60; // Maximum 3 seconds (60 * 50ms)
+    
+    const checkAndFinish = () => {
+      if (resolved) return;
+      
+      let allReady = false;
+      const chartImages = {};
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        const canvases = Array.from(doc.querySelectorAll("canvas"));
+        
+        if (canvases.length > 0) {
+          let readyCount = 0;
+          canvases.forEach(canvas => {
+            try {
+              const base64 = canvas.toDataURL("image/png");
+              // A blank canvas is extremely short in Base64 (usually < 1500 chars).
+              // Once drawn with grid lines, labels, and datasets, the PNG data is easily > 2000 chars.
+              if (base64.length > 2000) {
+                readyCount++;
+                chartImages[canvas.id] = {
+                  src: base64,
+                  width: canvas.offsetWidth || canvas.width || 600,
+                  height: canvas.offsetHeight || canvas.height || 300
+                };
+              }
+            } catch (e) {}
+          });
+          
+          if (readyCount === canvases.length) {
+            allReady = true;
+          }
+        }
+      } catch (err) {}
+
+      if (allReady) {
+        resolved = true;
+        try {
+          document.body.removeChild(iframe);
+        } catch (e) {}
+        resolve(chartImages);
+      } else {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          resolved = true;
+          try {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            const canvases = Array.from(doc.querySelectorAll("canvas"));
+            canvases.forEach(canvas => {
+              if (!chartImages[canvas.id]) {
+                try {
+                  const base64 = canvas.toDataURL("image/png");
+                  chartImages[canvas.id] = {
+                    src: base64,
+                    width: canvas.offsetWidth || canvas.width || 600,
+                    height: canvas.offsetHeight || canvas.height || 300
+                  };
+                } catch (e) {}
+              }
+            });
+          } catch (e) {}
+
+          try {
+            document.body.removeChild(iframe);
+          } catch (e) {}
+          resolve(chartImages);
+        } else {
+          setTimeout(checkAndFinish, 50);
+        }
+      }
+    };
+
+    iframe.onload = () => {
+      setTimeout(checkAndFinish, 50);
+    };
+
+    iframe.onerror = () => {
+      try {
+        document.body.removeChild(iframe);
+      } catch (e) {}
+      resolve({});
+    };
+
+    iframe.src = `/static/theory-html/${topicId}.html`;
+  });
+}
+
+function getMathJax() {
+  if (window.MathJax) return window.MathJax;
+  const iframe = document.querySelector("#theoryDetailSplitContainer iframe");
+  if (iframe && iframe.contentWindow?.MathJax) return iframe.contentWindow.MathJax;
+  const iframes = document.querySelectorAll("iframe");
+  for (const f of iframes) {
+    if (f.contentWindow?.MathJax) return f.contentWindow.MathJax;
+  }
+  return null;
+}
+
+async function downloadTheoryDetailWord(pageId) {
+  const downloadWordBtn = $("theoryDetailDownloadWordBtn");
+  if (downloadWordBtn) {
+    downloadWordBtn.disabled = true;
+    downloadWordBtn.textContent = "正在生成讲义...";
+  }
+
+  const topics = [
+    "basic", "purpose", "knowledge", "dataset", "model", 
+    "criterion", "optimization", "evaluation", "result", "thinking"
+  ];
+
+  const topicLabels = {
+    basic: "一、 实验背景",
+    purpose: "二、 实验目的",
+    knowledge: "三、 前置知识",
+    dataset: "四、 数据探索与分析",
+    model: "五、 模型构建",
+    criterion: "六、 学习准则",
+    optimization: "七、 参数优化",
+    evaluation: "八、 评价指标",
+    result: "九、 预期成果",
+    thinking: "十、 思考拓展"
+  };
+
+  try {
+    let combinedHtml = "";
+    
+    // 1. Fetch all 10 raw HTML texts in parallel
+    const fetchPromises = topics.map(async (topicId) => {
+      if (topicId === pageId && THEORY_PAGE_STATE.rawDetailHtml) {
+        return { topicId, htmlText: THEORY_PAGE_STATE.rawDetailHtml };
+      }
+      
+      const src = `/static/theory-html/${topicId}.html`;
+      try {
+        const resp = await fetch(src, { cache: "no-store" });
+        if (!resp.ok) return { topicId, htmlText: "" };
+        const htmlText = await resp.text();
+        return { topicId, htmlText };
+      } catch (err) {
+        console.error(`Failed to fetch ${topicId}:`, err);
+        return { topicId, htmlText: "" };
+      }
+    });
+
+    // 2. Render all charts in hidden background iframes using pixel-polling
+    const chartPromises = topics.map(topicId => renderPageCharts(topicId));
+
+    const [htmlResults, chartResults] = await Promise.all([
+      Promise.all(fetchPromises),
+      Promise.all(chartPromises)
+    ]);
+
+    const allChartImages = {};
+    chartResults.forEach(res => {
+      Object.assign(allChartImages, res);
+    });
+
+    // 3. Robust MathJax Loader Fallback
+    let mathjaxObj = getMathJax();
+    if (!mathjaxObj) {
+      await new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
+        script.async = true;
+        script.onload = () => {
+          mathjaxObj = window.MathJax;
+          resolve();
+        };
+        script.onerror = () => resolve();
+        document.head.appendChild(script);
+      });
+    }
+
+    htmlResults.forEach(({ topicId, htmlText }) => {
+      if (!htmlText) {
+        console.warn(`Empty htmlText for topic: ${topicId}`);
+        return;
+      }
+      
+      console.log(`Processing topic: ${topicId}, html length: ${htmlText.length}`);
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, "text/html");
+      const container = doc.querySelector(".content-container") || doc.body;
+
+      // Make the h1 section header a standard h2 using safe replaceChild
+      const h1 = container.querySelector("h1");
+      if (h1) {
+        const h2 = doc.createElement("h2");
+        const originalText = h1.innerText || h1.textContent || "";
+        const cleanText = originalText.replace(/^实验背景：|^实验目的：|^前置知识：|^数据分析：|^数据探索与分析：|^模型构建：|^学习准则：|^参数优化：|^评价指标：|^预期成果：|^思考拓展：/g, "").trim();
+        h2.innerHTML = `${topicLabels[topicId]}：${cleanText}`;
+        if (h1.parentNode) {
+          h1.parentNode.replaceChild(h2, h1);
+        }
+      }
+
+      // Sift sub-headers down to maintain correct textbook outline structure safely
+      const h2Elements = Array.from(container.querySelectorAll("h2"));
+      h2Elements.forEach(h2 => {
+        // Skip if it is our newly created section title h2
+        if (h2.innerText && h2.innerText.includes(topicLabels[topicId])) {
+          return;
+        }
+        const h3 = doc.createElement("h3");
+        h3.innerHTML = h2.innerHTML;
+        if (h2.parentNode) {
+          h2.parentNode.replaceChild(h3, h2);
+        }
+      });
+
+      // Convert all canvas charts to Base64 PNG img elements
+      const canvases = container.querySelectorAll("canvas");
+      canvases.forEach(canvas => {
+        const imgData = allChartImages[canvas.id];
+        if (imgData) {
+          // 创建一个专门清零缩进、居中对齐的段落容器
+          const wrapper = doc.createElement("p");
+          wrapper.className = "image-container";
+          wrapper.style.textAlign = "center";
+          wrapper.style.textIndent = "0";
+          wrapper.style.marginTop = "14pt";
+          wrapper.style.marginBottom = "14pt";
+          
+          const img = doc.createElement("img");
+          img.src = imgData.src;
+          // 彻底去除 HTML 硬编码的物理 width 和 height 属性，避免被 Word 强行解析导致逸出
+          // 只在 inline style 中控制宽度和自适应高度
+          img.style.width = "100%";
+          img.style.maxWidth = "460pt"; // A4纸标准可打印宽度限制
+          img.style.height = "auto";     // 自适应保持最佳高度比
+          img.style.display = "inline-block";
+          
+          wrapper.appendChild(img);
+          if (canvas.parentNode) {
+            canvas.parentNode.replaceChild(wrapper, canvas);
+          }
+        } else {
+          const placeholder = doc.createElement("div");
+          placeholder.className = "image-container";
+          placeholder.style.border = "1px dashed #cbd5e1";
+          placeholder.style.padding = "20px";
+          placeholder.style.margin = "14pt auto";
+          placeholder.style.textAlign = "center";
+          placeholder.style.color = "#64748b";
+          placeholder.style.fontSize = "11pt";
+          placeholder.style.backgroundColor = "#f8fafc";
+          placeholder.style.textIndent = "0";
+          placeholder.innerHTML = `[ 数据图表：${canvas.id || "未命名图表"} ]<br><span style="font-size: 9pt; color: #94a3b8;">（提示：若图表显示为空白，请检查网络连接以确保 Chart.js 正常加载渲染）</span>`;
+          if (canvas.parentNode) {
+            canvas.parentNode.replaceChild(placeholder, canvas);
+          }
+        }
+      });
+
+      // Convert LaTeX formulas to native Word MathML
+      const mathDisplays = container.querySelectorAll(".math-display");
+      mathDisplays.forEach(el => {
+        let rawText = el.textContent || el.innerText || "";
+        rawText = rawText.replace(/^\$\$|\$\$/g, "").trim();
+        try {
+          if (mathjaxObj && typeof mathjaxObj.tex2mml === "function") {
+            const mml = mathjaxObj.tex2mml(rawText, { display: true });
+            el.innerHTML = mml;
+          } else {
+            el.innerHTML = `$$ ${rawText} $$`;
+          }
+        } catch (e) {
+          el.innerHTML = `$$ ${rawText} $$`;
+        }
+      });
+
+      // Clear dynamic code-level scripts and MathJax elements
+      const MathJaxJunk = container.querySelectorAll(".MathJax, .mjx-container, script");
+      MathJaxJunk.forEach(el => el.remove());
+
+      combinedHtml += `<div class="handout-section" id="section-${topicId}">\n${container.innerHTML}\n</div>\n`;
+    });
+
+    console.log("Combined HTML generation finished. Total length:", combinedHtml.length);
+
+    if (!combinedHtml || combinedHtml.length < 500) {
+      alert("生成讲义失败，未能加载任何详情页或详情内容缺失。");
+      return;
+    }
+
+    const docTitle = "简单线性回归：波士顿房价预测教学讲义";
+    const fileContent = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <title>${docTitle}</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          @page {
+            size: 21cm 29.7cm; /* A4 */
+            margin: 2.54cm 2.54cm 2.54cm 2.54cm; /* Standard margins */
+          }
+          body {
+            font-family: 'Times New Roman', 'SimSun', 'Songti SC', serif;
+            line-height: 1.5;
+            color: #000000;
+            font-size: 11pt; /* Five-size standard character */
+          }
+          .handout-title {
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+            font-size: 22pt;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20pt;
+            color: #000000;
+          }
+          .handout-subtitle {
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+            font-size: 13pt;
+            text-align: center;
+            margin-top: -10pt;
+            margin-bottom: 36pt;
+            color: #555555;
+            font-style: italic;
+          }
+          .handout-section {
+            margin-bottom: 15pt;
+          }
+          h2 {
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+            font-size: 15pt; /* Section titles */
+            font-weight: bold;
+            color: #000000;
+            margin-top: 28pt; /* Section spacing */
+            margin-bottom: 12pt;
+            border-bottom: 1.5pt solid #000000;
+            padding-bottom: 4px;
+          }
+          h3 {
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+            font-size: 12.5pt; /* Subsection titles */
+            font-weight: bold;
+            color: #000000;
+            margin-top: 14pt;
+            margin-bottom: 8pt;
+          }
+          p {
+            font-family: 'Times New Roman', 'SimSun', serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            margin-bottom: 10pt;
+            text-indent: 22pt; /* Traditional indenting */
+            text-align: justify;
+          }
+          /* Remove indentation for special cards, math and codes */
+          p.no-indent, .academic-quote p, .math-display p, pre p, .chart-wrapper, .image-container {
+            text-indent: 0 !important;
+          }
+          .chart-wrapper, .image-container {
+            text-align: center !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          strong {
+            font-weight: bold;
+          }
+          ul, ol {
+            margin-top: 6pt;
+            margin-bottom: 12pt;
+            padding-left: 24pt;
+          }
+          li {
+            font-family: 'Times New Roman', 'SimSun', serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            margin-bottom: 4pt;
+          }
+          .math-display {
+            margin: 12pt 0;
+            text-align: center;
+          }
+          .academic-quote {
+            background-color: #f8fafc;
+            border-left: 3.5pt solid #64748b;
+            padding: 8pt 12pt;
+            margin: 14pt 0;
+          }
+          .academic-quote strong {
+            display: block;
+            margin-bottom: 6pt;
+            font-family: 'Microsoft YaHei', 'SimHei', sans-serif;
+          }
+          pre {
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            padding: 8pt;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9.5pt;
+            margin-bottom: 12pt;
+            white-space: pre-wrap;
+          }
+          code {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: #f1f5f9;
+            padding: 2px 4px;
+            font-size: 10pt;
+            border-radius: 3px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="handout-title">${docTitle}</div>
+        <div class="handout-subtitle">—— 简单线性回归机器学习全套教学实验讲义</div>
+        <div class="content-container">
+          ${combinedHtml}
+        </div>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff' + fileContent], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${docTitle}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert("生成讲义失败: " + err.message);
+  } finally {
+    if (downloadWordBtn) {
+      downloadWordBtn.disabled = false;
+      downloadWordBtn.textContent = "下载 Word 讲义";
+    }
+  }
+}
+
 function renderTheoryDetail(pageId) {
   $("main").innerHTML = `
     <div class="theory-detail-toolbar" data-html2canvas-ignore="true">
       <button class="theory-entry-detail theory-entry-deck" type="button" data-theory-deck="${escapeHtml(pageId)}">返回课件</button>
+      <button class="theory-export-btn theory-edit-btn" id="theoryDetailEditBtn" type="button">编辑详情</button>
+      <button class="theory-export-btn" id="theoryDetailDownloadWordBtn" type="button">下载 Word 讲义</button>
+      <button class="theory-export-btn theory-cancel-btn" id="theoryDetailCancelBtn" type="button" hidden>取消编辑</button>
+      <button class="theory-export-btn theory-save-btn" id="theoryDetailSaveBtn" type="button" hidden>保存修改</button>
     </div>
-    ${renderTheoryHtmlSlot(pageId)}
+    <div class="theory-detail-split-container" id="theoryDetailSplitContainer">
+      <div class="theory-detail-editor-pane" hidden>
+        <div class="theory-detail-editor-toolbar">
+          <button type="button" data-detail-insert="h2" title="插入二级标题">H2标题</button>
+          <button type="button" data-detail-insert="p" title="插入段落">段落</button>
+          <button type="button" data-detail-insert="quote" title="插入引用卡片">引用卡片</button>
+          <button type="button" data-detail-insert="math-display" title="插入块级公式">公式块</button>
+          <button type="button" data-detail-insert="math-inline" title="插入行内公式">行内公式</button>
+          <button type="button" data-detail-insert="bold" title="加粗选中文本">加粗</button>
+          <button type="button" data-detail-insert="list" title="插入无序列表">无序列表</button>
+        </div>
+        <textarea class="theory-detail-textarea" id="theoryDetailTextarea" spellcheck="false" placeholder="在此输入 Markdown 详情内容..."></textarea>
+      </div>
+      <div class="theory-detail-preview-pane">
+        ${renderTheoryHtmlSlot(pageId)}
+      </div>
+    </div>
   `;
+
   const deckBtn = document.querySelector("[data-theory-deck]");
   if (deckBtn) deckBtn.addEventListener("click", () => renderTheoryDeckDetail(pageId));
+
+  const editBtn = $("theoryDetailEditBtn");
+  const downloadWordBtn = $("theoryDetailDownloadWordBtn");
+  const cancelBtn = $("theoryDetailCancelBtn");
+  const saveBtn = $("theoryDetailSaveBtn");
+  const splitContainer = $("theoryDetailSplitContainer");
+  const editorPane = splitContainer.querySelector(".theory-detail-editor-pane");
+  const textarea = $("theoryDetailTextarea");
+
+  if (downloadWordBtn) {
+    downloadWordBtn.addEventListener("click", () => downloadTheoryDetailWord(pageId));
+  }
+
+  editBtn.addEventListener("click", () => {
+    editBtn.hidden = true;
+    deckBtn.hidden = true;
+    if (downloadWordBtn) downloadWordBtn.hidden = true;
+    cancelBtn.hidden = false;
+    saveBtn.hidden = false;
+    splitContainer.classList.add("editing");
+    editorPane.removeAttribute("hidden");
+
+    // Parse server HTML and convert to Markdown
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(THEORY_PAGE_STATE.rawDetailHtml || "", "text/html");
+    const container = doc.querySelector(".content-container");
+    
+    // Clean converting using our HTML-to-Markdown parser!
+    const markdown = htmlToMarkdown(container || doc.body);
+    textarea.value = cleanHtmlFormatting(markdown);
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    if (confirm("确定要放弃所有未保存的修改吗？")) {
+      editBtn.hidden = false;
+      deckBtn.hidden = false;
+      if (downloadWordBtn) downloadWordBtn.hidden = false;
+      cancelBtn.hidden = true;
+      saveBtn.hidden = true;
+      splitContainer.classList.remove("editing");
+      editorPane.setAttribute("hidden", "true");
+
+      const iframe = splitContainer.querySelector("iframe");
+      if (iframe) {
+        iframe.srcdoc = THEORY_PAGE_STATE.rawDetailHtml;
+      }
+    }
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    const markdown = textarea.value;
+    const newContentHtml = markdownToHtml(markdown);
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(THEORY_PAGE_STATE.rawDetailHtml || "", "text/html");
+    const container = doc.querySelector(".content-container");
+    if (container) {
+      container.innerHTML = newContentHtml;
+    } else {
+      doc.body.innerHTML = newContentHtml;
+    }
+    const fullHtml = doc.documentElement.outerHTML;
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "保存中...";
+
+    try {
+      const resp = await fetch("/api/save_theory_html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_id: pageId,
+          html: fullHtml
+        })
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json();
+        throw new Error(errData.error || "保存失败");
+      }
+
+      const data = await resp.json();
+      if (data.saved) {
+        THEORY_PAGE_STATE.rawDetailHtml = fullHtml;
+        alert("详情页内容保存成功！");
+
+        editBtn.hidden = false;
+        deckBtn.hidden = false;
+        if (downloadWordBtn) downloadWordBtn.hidden = false;
+        cancelBtn.hidden = true;
+        saveBtn.hidden = true;
+        splitContainer.classList.remove("editing");
+        editorPane.setAttribute("hidden", "true");
+      } else {
+        throw new Error("保存失败");
+      }
+    } catch (err) {
+      alert("错误: " + err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "保存修改";
+    }
+  });
+
+  let previewTimeout;
+  textarea.addEventListener("input", () => {
+    clearTimeout(previewTimeout);
+    previewTimeout = setTimeout(() => {
+      const markdown = textarea.value;
+      const newContentHtml = markdownToHtml(markdown);
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(THEORY_PAGE_STATE.rawDetailHtml || "", "text/html");
+      const container = doc.querySelector(".content-container");
+      if (container) {
+        container.innerHTML = newContentHtml;
+      } else {
+        doc.body.innerHTML = newContentHtml;
+      }
+      const iframe = splitContainer.querySelector("iframe");
+      if (iframe) {
+        iframe.srcdoc = doc.documentElement.outerHTML;
+      }
+    }, 400);
+  });
+
+  const insertButtons = editorPane.querySelectorAll("[data-detail-insert]");
+  insertButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const action = btn.dataset.detailInsert;
+      insertHelperContent(textarea, action);
+    });
+  });
+
+  // 1. 定义左侧 Textarea 滚动同步至右侧 Iframe 的函数 (方案四：基于内容指纹虚拟桥接与段落内外双重插值映射系统)
+  const syncScrollFromTextarea = () => {
+    const iframe = splitContainer.querySelector("iframe");
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      const scrollable = doc.documentElement || doc.body;
+      if (!scrollable) return;
+
+      const computedStyle = window.getComputedStyle(textarea);
+      const lineHeight = parseFloat(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5 || 24;
+      const visibleLineIndex = textarea.scrollTop / lineHeight;
+      const lines = textarea.value.split('\n');
+
+      // 1.1 动态解析左侧的 Markdown 虚拟 Block
+      const blocks = [];
+      lines.forEach((line, index) => {
+        const trimmed = line.trim();
+        // 搜集所有的实质性文本行（过滤掉公式标记与纯代码块标记，保证匹配纯净）
+        if (trimmed && trimmed.length > 2 && !trimmed.startsWith('$$') && !trimmed.startsWith('```')) {
+          blocks.push({
+            line: index,
+            text: trimmed
+          });
+        }
+      });
+
+      // 1.2 搜集右侧所有能承载这些块内容的块级 DOM 元素
+      const domElements = Array.from(doc.querySelectorAll(
+        ".content-container > p, .content-container > li, .content-container > h1, .content-container > h2, .content-container > h3, .content-container > h4, .content-container > pre, .content-container > blockquote, .content-container > table, .content-container > .academic-quote, .content-container > .academic-note, .content-container > .chart-wrapper"
+      )).filter(el => {
+        // 排除 MathJax 产生的隐藏元素
+        return el.offsetHeight > 0 && !el.classList.contains("MathJax");
+      });
+
+      // 1.3 利用 Map 搜集右侧每个 DOM 元素所成功匹配映射到的左侧行号集合
+      const domLineMap = new Map();
+      blocks.forEach(block => {
+        let cleanText = block.text
+          .replace(/^[#>\-*+\s\d.]+\s*/, "") // 去除前缀
+          .replace(/[*_`]/g, "")           // 去除修饰符
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+          .trim();
+
+        if (cleanText.length > 8) {
+          cleanText = cleanText.slice(0, 8);
+        }
+
+        if (cleanText && cleanText.length >= 2) {
+          const matchedEl = domElements.find(el => {
+            const elText = (el.innerText || el.textContent || "").trim();
+            return elText.includes(cleanText);
+          });
+          if (matchedEl) {
+            if (!domLineMap.has(matchedEl)) {
+              domLineMap.set(matchedEl, []);
+            }
+            domLineMap.get(matchedEl).push(block.line);
+          }
+        }
+      });
+
+      // 1.4 构建并排序有序的“段落锚点链”
+      const paragraphAnchors = [];
+      domLineMap.forEach((linesList, element) => {
+        const lineStart = Math.min(...linesList);
+        let lineEnd = Math.max(...linesList);
+        // 如果段落只映射到了一行，将其合理展宽 1.2 行以触发精细段落内平滑插值
+        if (lineStart === lineEnd) {
+          lineEnd = lineStart + 1.2;
+        }
+        paragraphAnchors.push({
+          element,
+          lineStart,
+          lineEnd
+        });
+      });
+
+      paragraphAnchors.sort((a, b) => a.lineStart - b.lineStart);
+
+      // 1.5 兜底：若无有效匹配锚点，回退到高度百分比对齐
+      if (paragraphAnchors.length === 0) {
+        const textareaScrollHeight = textarea.scrollHeight - textarea.clientHeight;
+        if (textareaScrollHeight > 0) {
+          const percentage = textarea.scrollTop / textareaScrollHeight;
+          const iframeScrollHeight = scrollable.scrollHeight - iframe.clientHeight;
+          if (iframeScrollHeight > 0) {
+            iframe.contentWindow.scrollTo(0, percentage * iframeScrollHeight);
+          }
+        }
+        return;
+      }
+
+      // 获取元素相对于 iframe 顶端的 offsetTop 绝对物理高度
+      const getElementTop = (el) => {
+        let top = 0;
+        let current = el;
+        while (current && current !== doc.body && current !== doc.documentElement) {
+          top += current.offsetTop || 0;
+          current = current.offsetParent;
+        }
+        return top;
+      };
+
+      // 补全段落的 top 偏移量和实际高度
+      paragraphAnchors.forEach(anchor => {
+        anchor.top = getElementTop(anchor.element);
+        anchor.height = anchor.element.offsetHeight || 32;
+      });
+
+      // 1.6 边界检查：当前滚动位置小于第一个锚点的 lineStart
+      if (visibleLineIndex <= paragraphAnchors[0].lineStart) {
+        iframe.contentWindow.scrollTo(0, 0);
+        return;
+      }
+
+      // 1.7 边界检查：当前滚动位置大于最后一个锚点的 lineEnd
+      if (visibleLineIndex >= paragraphAnchors[paragraphAnchors.length - 1].lineEnd) {
+        const iframeScrollHeight = scrollable.scrollHeight - iframe.clientHeight;
+        iframe.contentWindow.scrollTo(0, iframeScrollHeight);
+        return;
+      }
+
+      // 1.8 情况 A：检查是否处于某个段落内部 (实现段落内部的逐行、逐单词高灵敏物理等比例平滑插值)
+      for (let i = 0; i < paragraphAnchors.length; i++) {
+        const anchor = paragraphAnchors[i];
+        if (visibleLineIndex >= anchor.lineStart && visibleLineIndex <= anchor.lineEnd) {
+          const range = anchor.lineEnd - anchor.lineStart;
+          const localRatio = range > 0 ? (visibleLineIndex - anchor.lineStart) / range : 0;
+          const targetScrollTop = anchor.top + localRatio * anchor.height;
+          iframe.contentWindow.scrollTo(0, targetScrollTop);
+          return;
+        }
+      }
+
+      // 1.9 情况 B：检查是否处于两个相邻大段落之间的缝隙中 (实现跨段落过渡区域平滑平移)
+      for (let i = 0; i < paragraphAnchors.length - 1; i++) {
+        const current = paragraphAnchors[i];
+        const next = paragraphAnchors[i + 1];
+        if (visibleLineIndex > current.lineEnd && visibleLineIndex < next.lineStart) {
+          const range = next.lineStart - current.lineEnd;
+          const localRatio = range > 0 ? (visibleLineIndex - current.lineEnd) / range : 0;
+          const currentBottom = current.top + current.height;
+          const targetScrollTop = currentBottom + localRatio * (next.top - currentBottom);
+          iframe.contentWindow.scrollTo(0, targetScrollTop);
+          return;
+        }
+      }
+    } catch (e) {}
+  };
+
+  // 2. 监听左侧 Textarea 的 scroll 事件
+  textarea.addEventListener("scroll", syncScrollFromTextarea);
+
+  // 3. 监听右侧 Iframe 的 load 事件以在重新加载完成后重施滚动比例
+  const iframe = splitContainer.querySelector("iframe");
+  if (iframe) {
+    iframe.addEventListener("load", () => {
+      // 重新对齐滚动百分比，保持预览与编辑行同步且不发生重新加载的回弹闪烁
+      syncScrollFromTextarea();
+    });
+  }
+
   loadTheoryHtml(pageId);
+}
+
+function htmlToMarkdown(node) {
+  if (!node) return "";
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+
+  const tagName = node.tagName.toLowerCase();
+
+  // Custom components
+  if (node.classList.contains("math-display")) {
+    const text = node.textContent.trim();
+    const formula = text.replace(/^\$\$|\$\$/g, "").trim();
+    return `\n$$\n${formula}\n$$\n`;
+  }
+
+  if (node.classList.contains("academic-quote") || 
+      node.classList.contains("academic-warning") || 
+      node.classList.contains("academic-note") ||
+      node.classList.contains("academic-theory")) {
+    const kind = node.classList.contains("academic-warning") ? "warning" : 
+                 node.classList.contains("academic-note") ? "note" : 
+                 node.classList.contains("academic-theory") ? "theory" : "quote";
+    let innerMarkdown = "";
+    for (const child of node.childNodes) {
+      innerMarkdown += htmlToMarkdown(child);
+    }
+    const lines = innerMarkdown.trim().split("\n");
+    const quoted = lines.map(line => `> ${line}`).join("\n");
+    return `\n[quote:${kind}]\n${quoted}\n[/quote]\n`;
+  }
+
+  if (node.classList.contains("chart-wrapper")) {
+    const canvas = node.querySelector("canvas");
+    const canvasId = canvas ? canvas.id : "barChart";
+    const p = node.querySelector("p");
+    const caption = p ? p.textContent.trim() : "";
+    return `\n[chart:${canvasId} caption="${caption}"]\n`;
+  }
+
+  let childrenMarkdown = "";
+  for (const child of node.childNodes) {
+    childrenMarkdown += htmlToMarkdown(child);
+  }
+
+  if (tagName === "h1") {
+    return `\n# ${childrenMarkdown.trim()}\n`;
+  }
+  if (tagName === "h2") {
+    return `\n## ${childrenMarkdown.trim()}\n`;
+  }
+  if (tagName === "h3") {
+    return `\n### ${childrenMarkdown.trim()}\n`;
+  }
+  if (tagName === "p") {
+    return `\n${childrenMarkdown.trim()}\n`;
+  }
+  if (tagName === "strong" || tagName === "b") {
+    return `**${childrenMarkdown.trim()}**`;
+  }
+  if (tagName === "em" || tagName === "i") {
+    return `*${childrenMarkdown.trim()}*`;
+  }
+  if (tagName === "ul" || tagName === "ol") {
+    return `\n${childrenMarkdown}\n`;
+  }
+  if (tagName === "li") {
+    return `- ${childrenMarkdown.trim()}\n`;
+  }
+  if (tagName === "pre") {
+    const codeEl = node.querySelector("code");
+    const lang = codeEl ? (codeEl.className.match(/language-(\w+)/)?.[1] || "python") : "python";
+    const codeText = codeEl ? codeEl.textContent : node.textContent;
+    return `\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n`;
+  }
+  if (tagName === "code") {
+    return `\`${childrenMarkdown.trim()}\``;
+  }
+
+  if (tagName === "div" || tagName === "section" || tagName === "body" || tagName === "html") {
+    return childrenMarkdown;
+  }
+
+  return childrenMarkdown;
+}
+
+function markdownToHtml(markdown) {
+  const lines = markdown.split("\n");
+  let html = "";
+  let inList = false;
+  let inCode = false;
+  let codeLang = "python";
+  let codeBlock = [];
+  let inMath = false;
+  let mathBlock = [];
+  let inQuote = false;
+  let quoteKind = "quote";
+  let quoteBlock = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // 1. Math Display Block
+    if (trimmed === "$$") {
+      if (inMath) {
+        html += `<div class="math-display">\n    $$\n    ${mathBlock.join("\n")}\n    $$\n</div>\n`;
+        mathBlock = [];
+        inMath = false;
+      } else {
+        inMath = true;
+      }
+      continue;
+    }
+    if (inMath) {
+      mathBlock.push(line);
+      continue;
+    }
+
+    // 2. Code Block
+    if (trimmed.startsWith("```")) {
+      if (inCode) {
+        html += `<pre><code class="language-${codeLang}">${escapeHtmlForCode(codeBlock.join("\n"))}</code></pre>\n`;
+        codeBlock = [];
+        inCode = false;
+      } else {
+        codeLang = trimmed.substring(3).trim() || "python";
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      codeBlock.push(line);
+      continue;
+    }
+
+    // 3. Custom Quote Block
+    if (trimmed.startsWith("[quote:") && trimmed.endsWith("]")) {
+      quoteKind = trimmed.substring(7, trimmed.length - 1) || "quote";
+      inQuote = true;
+      quoteBlock = [];
+      continue;
+    }
+    if (trimmed === "[/quote]") {
+      if (inQuote) {
+        const quoteClass = quoteKind === "warning" ? "academic-warning" : 
+                           quoteKind === "note" ? "academic-note" : 
+                           quoteKind === "theory" ? "academic-theory" : "academic-quote";
+        const innerHtml = markdownToHtml(quoteBlock.join("\n"));
+        html += `<div class="${quoteClass}">\n${innerHtml}</div>\n`;
+        inQuote = false;
+      }
+      continue;
+    }
+    if (inQuote) {
+      let content = line;
+      if (trimmed.startsWith(">")) {
+        content = line.substring(line.indexOf(">") + 1);
+      }
+      quoteBlock.push(content);
+      continue;
+    }
+
+    // 4. Custom Chart Tag
+    if (trimmed.startsWith("[chart:") && trimmed.endsWith("]")) {
+      const match = trimmed.match(/\[chart:(\w+)\s+caption="([^"]*)"\]/);
+      if (match) {
+        const canvasId = match[1];
+        const caption = match[2];
+        html += `
+        <div class="chart-wrapper">
+            <canvas id="${canvasId}" height="110"></canvas>
+            <p style="text-align: center; font-size: 13px; color: #64748b; margin-top: 15px; margin-bottom: 0;">${caption}</p>
+        </div>\n`;
+      }
+      continue;
+    }
+
+    // 5. Lists
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      if (!inList) {
+        html += "<ul>\n";
+        inList = true;
+      }
+      const itemContent = parseInlineStyles(line.substring(2));
+      html += `    <li>${itemContent}</li>\n`;
+      continue;
+    } else {
+      if (inList) {
+        html += "</ul>\n";
+        inList = false;
+      }
+    }
+
+    // Headings
+    if (trimmed.startsWith("# ")) {
+      html += `<h1>${parseInlineStyles(trimmed.substring(2))}</h1>\n`;
+      continue;
+    }
+    if (trimmed.startsWith("## ")) {
+      html += `<h2>${parseInlineStyles(trimmed.substring(3))}</h2>\n`;
+      continue;
+    }
+    if (trimmed.startsWith("### ")) {
+      html += `<h3>${parseInlineStyles(trimmed.substring(4))}</h3>\n`;
+      continue;
+    }
+
+    // Empty line
+    if (trimmed === "") {
+      continue;
+    }
+
+    // Paragraph
+    html += `<p>${parseInlineStyles(line)}</p>\n`;
+  }
+
+  if (inList) {
+    html += "</ul>\n";
+  }
+
+  return html;
+}
+
+function parseInlineStyles(text) {
+  let parsed = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  parsed = parsed.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  parsed = parsed.replace(/`([^`]+)`/g, "<code>$1</code>");
+  return parsed;
+}
+
+function escapeHtmlForCode(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function insertHelperContent(textarea, action) {
+  const startPos = textarea.selectionStart;
+  const endPos = textarea.selectionEnd;
+  const text = textarea.value;
+  const selectedText = text.substring(startPos, endPos);
+
+  let replacement = "";
+
+  if (action === "h2") {
+    replacement = `\n## ${selectedText || "标题文字"}\n`;
+  } else if (action === "p") {
+    replacement = `\n${selectedText || "段落文字内容。"}\n`;
+  } else if (action === "quote") {
+    replacement = `\n[quote:quote]\n> **${selectedText || "学术引用标题"}**\n> - 要点条目一\n> - 要点条目二\n[/quote]\n`;
+  } else if (action === "math-display") {
+    replacement = `\n$$\n${selectedText || "\\\\mathbf{y} = \\\\mathbf{X}\\\\mathbf{w} + b"}\n$$\n`;
+  } else if (action === "math-inline") {
+    replacement = `$${selectedText || "x"}$`;
+  } else if (action === "bold") {
+    replacement = `**${selectedText || "加粗文字"}**`;
+  } else if (action === "list") {
+    replacement = `\n- ${selectedText || "列表条目一"}\n- 列表条目二\n`;
+  }
+
+  textarea.value = text.substring(0, startPos) + replacement + text.substring(endPos);
+  textarea.focus();
+  
+  const newCursorPos = startPos + replacement.length;
+  textarea.setSelectionRange(newCursorPos, newCursorPos);
+  
+  textarea.dispatchEvent(new Event("input"));
+}
+
+function cleanHtmlFormatting(html) {
+  return html.trim();
 }
 
 function renderTheoryHtmlSlot(pageId) {
@@ -1508,11 +2597,21 @@ async function loadTheoryHtml(pageId) {
       return;
     }
     const iframe = wrap.querySelector("iframe");
-    iframe.setAttribute("scrolling", "no");
+    // Enable native scrolling by removing scrolling=no and setting height to 100%
+    iframe.removeAttribute("scrolling");
+    iframe.style.height = "100%";
     iframe.onload = () => {
-      fitTheoryIframe(iframe);
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        if (doc) {
+          doc.documentElement.style.overflow = "auto";
+          doc.body.style.overflow = "auto";
+        }
+      } catch (err) {}
     };
-    iframe.srcdoc = await resp.text();
+    const htmlText = await resp.text();
+    THEORY_PAGE_STATE.rawDetailHtml = htmlText;
+    iframe.srcdoc = htmlText;
     wrap.classList.remove("hidden");
   } catch (err) {
     renderError("理论详情页加载失败。");
@@ -1520,24 +2619,13 @@ async function loadTheoryHtml(pageId) {
 }
 
 function fitTheoryIframe(iframe) {
-  const resize = () => {
-    try {
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      if (!doc?.body) return;
-      doc.documentElement.style.overflow = "hidden";
-      doc.body.style.overflow = "hidden";
-      const height = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, doc.body.offsetHeight, doc.documentElement.offsetHeight);
-      iframe.style.height = `${height + 20}px`;
-    } catch (err) {
-      iframe.style.height = "680px";
-    }
-  };
-  resize();
-  setTimeout(resize, 100);
-  setTimeout(resize, 500);
+  iframe.style.height = "100%";
   try {
     const doc = iframe.contentDocument || iframe.contentWindow.document;
-    if (doc && "ResizeObserver" in window) new ResizeObserver(resize).observe(doc.body);
+    if (doc) {
+      doc.documentElement.style.overflow = "auto";
+      doc.body.style.overflow = "auto";
+    }
   } catch (err) {}
 }
 
@@ -1602,7 +2690,7 @@ function renderTheoryDeck(pageId) {
           <button class="theory-export-btn theory-edit-btn" id="theoryEditBtn" type="button">编辑课件</button>
           <button class="theory-export-btn theory-cancel-btn" id="theoryCancelBtn" type="button" hidden>不保存</button>
           <button class="theory-export-btn theory-save-btn" id="theorySaveBtn" type="button" hidden>保存修改</button>
-          <button class="theory-export-btn" id="theoryExportBtn" type="button">导出 PDF</button>
+          <button class="theory-export-btn" id="theoryExportBtn" type="button">下载全套 PPT</button>
         </div>
       </nav>
       <div class="theory-editor-tools" id="theoryEditorTools" data-html2canvas-ignore="true" hidden>
@@ -2357,7 +3445,7 @@ function bindTheoryDeck(pageId) {
     playTheoryModeTransition("readonly");
     setTheoryEditing(false);
   });
-  $("theoryExportBtn")?.addEventListener("click", () => exportTheoryPdf(pageId));
+  $("theoryExportBtn")?.addEventListener("click", () => exportTheoryPptx(pageId));
   document.querySelector("[data-theory-detail]")?.addEventListener("click", () => renderTheoryDetail(pageId));
   $("theoryAddSlideBtn")?.addEventListener("click", () => {
     finishTextEditing();
@@ -4845,44 +5933,441 @@ function cssEscape(value) {
   return String(value).replace(/["\\]/g, "\\$&");
 }
 
-async function exportTheoryPdf(pageId) {
-  const deck = $("theoryDeck");
-  const viewport = $("theorySlideViewport");
+function pptColor(c, fallback = "FFFFFF") {
+  if (!c) return fallback;
+  const str = c.trim().toLowerCase();
+  if (str === "transparent") return "FFFFFF";
+  if (str.startsWith("rgb")) {
+    const parts = str.match(/\d+/g);
+    if (parts && parts.length >= 3) {
+      const r = parseInt(parts[0], 10).toString(16).padStart(2, "0").toUpperCase();
+      const g = parseInt(parts[1], 10).toString(16).padStart(2, "0").toUpperCase();
+      const b = parseInt(parts[2], 10).toString(16).padStart(2, "0").toUpperCase();
+      return r + g + b;
+    }
+  }
+  if (str.startsWith("#")) {
+    return str.slice(1).toUpperCase();
+  }
+  // Check if it's already a 6-character hex string
+  if (/^[0-9a-fA-F]{6}$/.test(str)) {
+    return str.toUpperCase();
+  }
+  return fallback;
+}
+
+function cleanMathFormula(text) {
+  if (!text) return "";
+  let s = text.trim();
+  // Remove outer LaTeX delimiters
+  if (s.startsWith("$$") && s.endsWith("$$")) {
+    s = s.slice(2, -2).trim();
+  } else if (s.startsWith("$") && s.endsWith("$")) {
+    s = s.slice(1, -1).trim();
+  }
+  
+  // Replace symbols with high-quality Unicode math representations
+  s = s.replace(/\\hat\{y\}/g, "ŷ");
+  s = s.replace(/\\hat\{y\}_i/g, "ŷᵢ");
+  s = s.replace(/y_i/g, "yᵢ");
+  s = s.replace(/\\hat\{w\}/g, "ŵ");
+  s = s.replace(/\\hat\{b\}/g, "b̂");
+  s = s.replace(/\\alpha/g, "α");
+  s = s.replace(/\\beta/g, "β");
+  s = s.replace(/\\partial/g, "∂");
+  s = s.replace(/\\sum/g, "∑");
+  s = s.replace(/\\sum_\{i=1\}^\{m\}/g, "∑(i=1..m)");
+  s = s.replace(/\\sum_\{i=1\}\^m/g, "∑(i=1..m)");
+  s = s.replace(/\\cdots/g, "⋯");
+  s = s.replace(/\\cdot/g, "·");
+  s = s.replace(/\\times/g, "×");
+  s = s.replace(/\\sqrt/g, "√");
+  s = s.replace(/\\infty/g, "∞");
+  s = s.replace(/\\to/g, "→");
+  s = s.replace(/\\approx/g, "≈");
+  s = s.replace(/\\neq/g, "≠");
+  s = s.replace(/\\ge/g, "≥");
+  s = s.replace(/\\le/g, "≤");
+  s = s.replace(/\\div/g, "÷");
+  s = s.replace(/\\pm/g, "±");
+  
+  // Convert standard \frac{A}{B} to (A) / (B)
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1) / ($2)");
+  } while (s !== prev);
+
+  // Clean indices
+  s = s.replace(/_([0-9a-zA-Z])/g, "$1");
+  s = s.replace(/\^([0-9a-zA-Z])/g, "^$1");
+  s = s.replace(/_\{([^}]+)\}/g, "$1");
+  s = s.replace(/\^\{([^}]+)\}/g, "^$1");
+
+  s = s.replace(/\\/g, "");
+  s = s.replace(/\s+/g, " ");
+  
+  return s.trim();
+}
+
+function captureChartCanvasInMemory(component) {
+  let canvas = null;
+  let chart = null;
+  try {
+    if (!window.echarts) return null;
+    let w = parseFloat(component.position?.width);
+    let h = parseFloat(component.position?.height);
+    if (isNaN(w) || w <= 0) w = 620;
+    if (isNaN(h) || h <= 0) h = 440;
+
+    canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    
+    // Append to DOM to prevent parent computed style or offset errors
+    canvas.style.position = "absolute";
+    canvas.style.left = "-9999px";
+    canvas.style.top = "-9999px";
+    document.body.appendChild(canvas);
+
+    chart = echarts.init(canvas, null, { width: w, height: h, devicePixelRatio: 2 });
+    const option = resolveTheoryChartOption(component, { staticMode: true });
+    chart.setOption(option);
+    
+    const base64Data = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+    return base64Data;
+  } catch (err) {
+    console.error("captureChartCanvasInMemory error:", err);
+    return null;
+  } finally {
+    if (chart) {
+      try {
+        chart.dispose();
+      } catch (e) {}
+    }
+    if (canvas && canvas.parentNode) {
+      try {
+        canvas.parentNode.removeChild(canvas);
+      } catch (e) {}
+    }
+  }
+}
+
+async function exportTheoryPptx(pageId) {
   const exportBtn = $("theoryExportBtn");
-  if (!deck || !viewport || !exportBtn) return;
-  if (typeof html2pdf === "undefined") {
+  if (!exportBtn) return;
+  if (typeof PptxGenJS === "undefined") {
     setTheoryStatus("导出库未加载，请联网后重试");
     return;
   }
-  const activeBeforeExport = THEORY_PAGE_STATE.currentSlide;
+
   exportBtn.disabled = true;
   exportBtn.textContent = "生成中...";
-  setTheoryStatus("正在生成 PDF");
-  deck.classList.add("theory-exporting");
-  document.querySelectorAll(".theory-slide").forEach(slide => {
-    slide.classList.add("active");
-    slide.setAttribute("aria-hidden", "false");
-  });
+  setTheoryStatus("正在生成全套 PPT...");
+
   try {
-    renderTheoryCharts({ staticMode: true });
-    await waitForTheoryCharts();
-    await html2pdf().set({
-      margin: 0,
-      filename: (THEORY_PAGE_STATE.deck.title || "theory") + ".pdf",
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: null },
-      jsPDF: { unit: "in", format: "a4", orientation: "landscape" },
-      pagebreak: { mode: ["css", "legacy"], after: ".theory-slide" }
-    }).from(viewport).save();
-    setTheoryStatus("PDF 已导出");
+    const pptx = new PptxGenJS();
+    pptx.layout = "LAYOUT_16x9";
+
+    const topics = [
+      "basic", "purpose", "knowledge", "dataset", "model", 
+      "criterion", "optimization", "evaluation", "result", "thinking"
+    ];
+
+    const topicLabels = {
+      basic: "实验背景",
+      purpose: "实验目的",
+      knowledge: "前置知识",
+      dataset: "数据分析",
+      model: "模型构建",
+      criterion: "学习准则",
+      optimization: "参数优化",
+      evaluation: "评价指标",
+      result: "预期成果",
+      thinking: "思考拓展"
+    };
+
+    let totalSlidesCounter = 0;
+
+    for (let topicIdx = 0; topicIdx < topics.length; topicIdx++) {
+      const currentTopicId = topics[topicIdx];
+      const pageDeck = loadDeckForPage(currentTopicId);
+      const slides = pageDeck.slides || [];
+
+      for (let slideIdx = 0; slideIdx < slides.length; slideIdx++) {
+        const slideSpec = slides[slideIdx];
+        const slide = pptx.addSlide();
+
+        // 1. SET BG COLOR (F5F8FC grey-blue representing premium web app interface background!)
+        slide.background = { color: "F5F8FC" };
+
+        // 2. TOP ACCENT BRANDING LINE (2563EB solid line)
+        slide.addShape(pptx.shapes.RECTANGLE, {
+          x: 0, y: 0, w: 10, h: 0.08,
+          fill: { color: "2563EB" },
+          line: { color: "2563EB", width: 0 }
+        });
+
+        // 3. TOP RIGHT GLOW DESIGN CIRCLE (neon hover aura effect) - UNIFORMLY REMOVED AS REQUESTED BY USER
+
+        // 4. TOP LEFT ACCENT CHAPTER BADGE (e.g. "04 数据分析")
+        const badgeLabel = `${String(topicIdx + 1).padStart(2, "0")} ${topicLabels[currentTopicId]}`;
+        slide.addText(badgeLabel, {
+          x: 0.5, y: 0.22, w: 1.6, h: 0.28,
+          fill: { color: "EFF6FF" },
+          line: { color: "DBEAFE", width: 1 },
+          color: "2563EB",
+          bold: true,
+          fontSize: 9,
+          align: "center",
+          fontFace: "Microsoft YaHei",
+          valign: "middle",
+          rectRadius: 0.1
+        });
+
+        // 5. FOOTER page index - REMOVED AS REQUESTED BY USER
+
+        totalSlidesCounter++;
+
+        const components = [...(slideSpec.components || [])].sort((a, b) => parseLayerZIndex(a, 1) - parseLayerZIndex(b, 1));
+
+        for (const comp of components) {
+          if (comp.visible === false) continue;
+
+          const leftPx = comp.position ? parseFloat(comp.position.left) : 50;
+          const topPx = comp.position ? parseFloat(comp.position.top) : 50;
+          const widthPx = comp.position ? parseFloat(comp.position.width) : 300;
+          const heightPx = comp.position ? parseFloat(comp.position.height) : 100;
+
+          const x = leftPx / 96;
+          const y = topPx / 96;
+          const w = widthPx / 96;
+          const h = isNaN(heightPx) || heightPx === 0 ? 1.5 : heightPx / 96;
+
+          const type = comp.type || "text";
+
+          if (type === "eyebrow") {
+            if (comp.text && comp.text !== "理论部分") {
+              slide.addText(comp.text, {
+                x, y, w, h: 0.35,
+                fill: { color: "EFF6FF" },
+                color: "2563EB",
+                bold: true,
+                fontSize: 10,
+                align: "center",
+                fontFace: "Microsoft YaHei",
+                valign: "middle",
+                rectRadius: 0.1
+              });
+            }
+          } 
+          else if (type === "h1" || type === "h2" || type === "h3" || type === "title") {
+            slide.addText(comp.text || comp.title || "标题", {
+              x, y, w, h,
+              color: "0F172A",
+              bold: true,
+              fontSize: type === "h1" || type === "title" ? 22 : 18,
+              fontFace: "Microsoft YaHei",
+              align: "left",
+              valign: "top"
+            });
+          } 
+          else if (type === "p" || type === "text") {
+            slide.addText(comp.text || "", {
+              x, y, w, h,
+              color: "334155",
+              fontSize: 12,
+              fontFace: "Microsoft YaHei",
+              align: "left",
+              valign: "top",
+              lineSpacing: 18
+            });
+          } 
+          else if (type === "card") {
+            const background = comp.style?.backgroundColor || comp.style?.background || "F8FAFC";
+            const finalBg = pptColor(background, "F8FAFC");
+
+            slide.addText("", {
+              x, y, w, h,
+              fill: { color: finalBg },
+              line: { color: "E2E8F0", width: 1 },
+              rectRadius: 0.08
+            });
+
+            const parts = cardParts(comp);
+            slide.addText(parts.title, {
+              x: x + 0.15, y: y + 0.15, w: w - 0.3, h: 0.3,
+              color: "0F172A",
+              bold: true,
+              fontSize: 13,
+              fontFace: "Microsoft YaHei",
+              valign: "middle"
+            });
+            slide.addText(parts.body, {
+              x: x + 0.15, y: y + 0.45, w: w - 0.3, h: h - 0.6,
+              color: "475569",
+              fontSize: 10,
+              fontFace: "Microsoft YaHei",
+              valign: "top",
+              lineSpacing: 14
+            });
+          } 
+          else if (type === "cards") {
+            const items = comp.items || [];
+            if (items.length > 0) {
+              const cardGap = 0.15;
+              const singleCardW = (w - (items.length - 1) * cardGap) / items.length;
+
+              items.forEach((item, itemIdx) => {
+                const itemX = x + itemIdx * (singleCardW + cardGap);
+                const itemY = y;
+                const itemW = singleCardW;
+                const itemH = h;
+
+                const background = item.style?.backgroundColor || item.style?.background || "F8FAFC";
+                const finalBg = pptColor(background, "F8FAFC");
+
+                slide.addText("", {
+                  x: itemX, y: itemY, w: itemW, h: itemH,
+                  fill: { color: finalBg },
+                  line: { color: "E2E8F0", width: 1 },
+                  rectRadius: 0.08
+                });
+
+                slide.addText(item.title || "卡片标题", {
+                  x: itemX + 0.12, y: itemY + 0.12, w: itemW - 0.24, h: 0.3,
+                  color: "0F172A",
+                  bold: true,
+                  fontSize: 12,
+                  fontFace: "Microsoft YaHei",
+                  valign: "middle"
+                });
+                slide.addText(item.body || "卡片正文", {
+                  x: itemX + 0.12, y: itemY + 0.42, w: itemW - 0.24, h: itemH - 0.54,
+                  color: "475569",
+                  fontSize: 9.5,
+                  fontFace: "Microsoft YaHei",
+                  valign: "top",
+                  lineSpacing: 13
+                });
+              });
+            }
+          } 
+          else if (type === "bullets") {
+            const items = comp.items || [];
+            if (items.length > 0) {
+              const bulletData = items.map(item => ({
+                text: item.text || "要点内容",
+                options: { bullet: true, fontSize: 12, color: "334155", fontFace: "Microsoft YaHei" }
+              }));
+              slide.addText(bulletData, { x, y, w, h, valign: "top" });
+            }
+          } 
+          else if (type === "callout") {
+            slide.addText(comp.text || "提示内容", {
+              x, y, w, h,
+              fill: { color: "FFF6D6" },
+              line: { color: "F3D370", width: 1 },
+              color: "7C5C00",
+              fontSize: 11,
+              fontFace: "Microsoft YaHei",
+              valign: "middle",
+              rectRadius: 0.08,
+              align: "center"
+            });
+          } 
+          else if (type === "formula") {
+            const cleanedFormulaText = cleanMathFormula(comp.text || "");
+            slide.addText(cleanedFormulaText, {
+              x, y, w, h,
+              fill: { color: "F8FAFC" },
+              line: { color: "E2E8F0", width: 1 },
+              color: "0F172A",
+              fontSize: 13,
+              fontFace: "Microsoft YaHei",
+              bold: true,
+              valign: "middle",
+              align: "center",
+              rectRadius: 0.08
+            });
+          } 
+          else if (type === "table") {
+            const tableData = normalizeTableData(comp.tableData);
+            if (tableData?.cells?.length > 0) {
+              const tableRows = tableData.cells.map((row, rowIdx) => 
+                row.map(cell => ({
+                  text: cell || "",
+                  options: {
+                    fill: rowIdx === 0 && tableData.header ? "EFF6FF" : "FFFFFF",
+                    color: rowIdx === 0 && tableData.header ? "1E3A8A" : "334155",
+                    bold: rowIdx === 0 && tableData.header,
+                    fontFace: "Microsoft YaHei",
+                    fontSize: 10,
+                    align: "center",
+                    valign: "middle"
+                  }
+                }))
+              );
+              slide.addTable(tableRows, {
+                x, y, w, h,
+                border: { type: "solid", color: "CBD5E1", size: 1 }
+              });
+            }
+          } 
+          else if (type === "chart" || type === "visual") {
+            let base64Data = null;
+            if (currentTopicId === pageId) {
+              const chartCanvas = document.querySelector(`[data-theory-slide="${slideIdx}"] [data-chart-id="${cssEscape(comp.id)}"] canvas`);
+              if (chartCanvas) {
+                try {
+                  base64Data = chartCanvas.toDataURL("image/png");
+                } catch (e) {}
+              }
+            }
+
+            if (!base64Data) {
+              base64Data = captureChartCanvasInMemory(comp);
+            }
+
+            if (base64Data) {
+              slide.addImage({ data: base64Data, x, y, w, h, sizing: { type: "contain", w, h } });
+            } else {
+              slide.addText(`[图表: ${comp.text || comp.label || "数据可视化"}]`, {
+                x, y, w, h,
+                fill: { color: "F1F5F9" },
+                color: "64748B",
+                align: "center",
+                valign: "middle"
+              });
+            }
+          } 
+          else if (type === "image") {
+            const src = comp.src || "";
+            if (src) {
+              const fullPath = src.startsWith("data:") ? src : (window.location.origin + src);
+              slide.addImage({ path: fullPath, x, y, w, h, sizing: { type: "contain", w, h } });
+            } else {
+              slide.addText("[无图片数据]", {
+                x, y, w, h,
+                fill: { color: "F1F5F9" },
+                color: "64748B",
+                align: "center",
+                valign: "middle"
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const finalFilename = "简单线性回归波士顿房价预测-全套完整课件.pptx";
+    await pptx.writeFile({ fileName: finalFilename });
+    setTheoryStatus("全套 PPT 下载成功");
   } catch (err) {
-    setTheoryStatus("PDF 导出失败");
+    setTheoryStatus("PPT 导出失败: " + err.message);
   } finally {
-    deck.classList.remove("theory-exporting");
     exportBtn.disabled = false;
-    exportBtn.textContent = "导出 PDF";
-    renderTheoryCharts({ staticMode: false });
-    renderTheorySlide(activeBeforeExport);
+    exportBtn.textContent = "下载全套 PPT";
   }
 }
 
