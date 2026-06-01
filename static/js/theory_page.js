@@ -5998,16 +5998,65 @@ function cleanMathFormula(text) {
     s = s.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1) / ($2)");
   } while (s !== prev);
 
-  // Clean indices
-  s = s.replace(/_([0-9a-zA-Z])/g, "$1");
-  s = s.replace(/\^([0-9a-zA-Z])/g, "^$1");
-  s = s.replace(/_\{([^}]+)\}/g, "$1");
-  s = s.replace(/\^\{([^}]+)\}/g, "^$1");
+  // Clean indices to high-quality Unicode subscripts and superscripts
+  const subs = {
+    "0":"₀", "1":"₁", "2":"₂", "3":"₃", "4":"₄", "5":"₅", "6":"₆", "7":"₇", "8":"₈", "9":"₉",
+    "+":"₊", "-":"₋", "=":"₌", "(":"₍", ")":"₎", "a":"ₐ", "e":"ₑ", "o":"ₒ", "x":"ₓ", "h":"ₕ",
+    "k":"ₖ", "l":"ₗ", "m":"ₘ", "n":"ₙ", "p":"ₚ", "s":"ₛ", "t":"ₜ", "i":"ᵢ", "j":"ⱼ", "r":"ᵣ",
+    "u":"ᵤ", "v":"ᵥ"
+  };
+  const sups = {
+    "0":"⁰", "1":"¹", "2":"²", "3":"³", "4":"⁴", "5":"⁵", "6":"⁶", "7":"⁷", "8":"⁸", "9":"⁹",
+    "+":"⁺", "-":"⁻", "=":"⁼", "(":"⁽", ")":"⁾", "n":"ⁿ", "i":"ⁱ"
+  };
+
+  s = s.replace(/_\{([^}]+)\}/g, (match, p1) => {
+    let res = "";
+    for (let char of p1) {
+      res += subs[char] || char;
+    }
+    return res;
+  });
+
+  s = s.replace(/\^\{([^}]+)\}/g, (match, p1) => {
+    let res = "";
+    for (let char of p1) {
+      res += sups[char] || char;
+    }
+    return res;
+  });
+
+  s = s.replace(/_([0-9a-zA-Z])/g, (match, p1) => {
+    return subs[p1] || p1;
+  });
+
+  s = s.replace(/\^([0-9a-zA-Z])/g, (match, p1) => {
+    return sups[p1] || p1;
+  });
 
   s = s.replace(/\\/g, "");
   s = s.replace(/\s+/g, " ");
   
   return s.trim();
+}
+
+function cleanTextWithInlineMath(text) {
+  let source = String(text ?? "");
+  if (!source.includes("$")) return source;
+  
+  // First clean block formulas with $$
+  const blockPattern = /\$\$([\s\S]+?)\$\$/g;
+  source = source.replace(blockPattern, (match) => {
+    return cleanMathFormula(match);
+  });
+
+  // Then clean inline formulas with $
+  const inlinePattern = /\$([^$]+?)\$/g;
+  source = source.replace(inlinePattern, (match) => {
+    return cleanMathFormula(match);
+  });
+
+  return source;
 }
 
 function captureChartCanvasInMemory(component) {
@@ -6148,7 +6197,7 @@ async function exportTheoryPptx(pageId) {
 
           if (type === "eyebrow") {
             if (comp.text && comp.text !== "理论部分") {
-              slide.addText(comp.text, {
+              slide.addText(cleanTextWithInlineMath(comp.text), {
                 x, y, w, h: 0.35,
                 fill: { color: "EFF6FF" },
                 color: "2563EB",
@@ -6162,7 +6211,7 @@ async function exportTheoryPptx(pageId) {
             }
           } 
           else if (type === "h1" || type === "h2" || type === "h3" || type === "title") {
-            slide.addText(comp.text || comp.title || "标题", {
+            slide.addText(cleanTextWithInlineMath(comp.text || comp.title || "标题"), {
               x, y, w, h,
               color: "0F172A",
               bold: true,
@@ -6173,7 +6222,7 @@ async function exportTheoryPptx(pageId) {
             });
           } 
           else if (type === "p" || type === "text") {
-            slide.addText(comp.text || "", {
+            slide.addText(cleanTextWithInlineMath(comp.text || ""), {
               x, y, w, h,
               color: "334155",
               fontSize: 12,
@@ -6195,7 +6244,7 @@ async function exportTheoryPptx(pageId) {
             });
 
             const parts = cardParts(comp);
-            slide.addText(parts.title, {
+            slide.addText(cleanTextWithInlineMath(parts.title), {
               x: x + 0.15, y: y + 0.15, w: w - 0.3, h: 0.3,
               color: "0F172A",
               bold: true,
@@ -6203,7 +6252,7 @@ async function exportTheoryPptx(pageId) {
               fontFace: "Microsoft YaHei",
               valign: "middle"
             });
-            slide.addText(parts.body, {
+            slide.addText(cleanTextWithInlineMath(parts.body), {
               x: x + 0.15, y: y + 0.45, w: w - 0.3, h: h - 0.6,
               color: "475569",
               fontSize: 10,
@@ -6234,7 +6283,7 @@ async function exportTheoryPptx(pageId) {
                   rectRadius: 0.08
                 });
 
-                slide.addText(item.title || "卡片标题", {
+                slide.addText(cleanTextWithInlineMath(item.title || "卡片标题"), {
                   x: itemX + 0.12, y: itemY + 0.12, w: itemW - 0.24, h: 0.3,
                   color: "0F172A",
                   bold: true,
@@ -6242,7 +6291,7 @@ async function exportTheoryPptx(pageId) {
                   fontFace: "Microsoft YaHei",
                   valign: "middle"
                 });
-                slide.addText(item.body || "卡片正文", {
+                slide.addText(cleanTextWithInlineMath(item.body || "卡片正文"), {
                   x: itemX + 0.12, y: itemY + 0.42, w: itemW - 0.24, h: itemH - 0.54,
                   color: "475569",
                   fontSize: 9.5,
@@ -6257,14 +6306,14 @@ async function exportTheoryPptx(pageId) {
             const items = comp.items || [];
             if (items.length > 0) {
               const bulletData = items.map(item => ({
-                text: item.text || "要点内容",
+                text: cleanTextWithInlineMath(item.text || "要点内容"),
                 options: { bullet: true, fontSize: 12, color: "334155", fontFace: "Microsoft YaHei" }
               }));
               slide.addText(bulletData, { x, y, w, h, valign: "top" });
             }
           } 
           else if (type === "callout") {
-            slide.addText(comp.text || "提示内容", {
+            slide.addText(cleanTextWithInlineMath(comp.text || "提示内容"), {
               x, y, w, h,
               fill: { color: "FFF6D6" },
               line: { color: "F3D370", width: 1 },
@@ -6296,7 +6345,7 @@ async function exportTheoryPptx(pageId) {
             if (tableData?.cells?.length > 0) {
               const tableRows = tableData.cells.map((row, rowIdx) => 
                 row.map(cell => ({
-                  text: cell || "",
+                  text: cleanTextWithInlineMath(cell || ""),
                   options: {
                     fill: rowIdx === 0 && tableData.header ? "EFF6FF" : "FFFFFF",
                     color: rowIdx === 0 && tableData.header ? "1E3A8A" : "334155",
