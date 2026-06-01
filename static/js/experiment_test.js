@@ -275,23 +275,38 @@ function currentExperimentTestGroup() {
   return group;
 }
 
-function experimentTestButtonHtml() {
-  if (!isExperimentTestActive()) return "";
-  const state = getExperimentTestState();
+function currentPracticeTestGroup() {
+  if (!["preprocess", "train_eval", "evaluate", "predict"].includes(currentPage)) return [];
+  const step = currentPage === "preprocess"
+    ? activePreprocessStep
+    : currentPage === "train_eval"
+      ? activeTrainStep
+      : currentPage === "evaluate"
+        ? "metrics"
+        : "predict";
+  return EXPERIMENT_TEST_FLOW
+    .map((item, index) => ({ ...item, index }))
+    .filter(item => item.page === currentPage && item.step === step);
+}
+
+function experimentTestButtonHtml({ practice = false } = {}) {
+  if (!practice && !isExperimentTestActive()) return "";
   return `
-    <button class="test-task-btn" type="button" data-test-open>查看测试内容</button>
-    <div class="test-progress-note">实验测试进行中：第 ${state.currentIndex + 1} / ${EXPERIMENT_TEST_FLOW.length} 题</div>
+    <button class="test-task-btn" type="button" ${practice ? "data-practice-test-open" : "data-test-open"}>查看测试内容</button>
   `;
 }
 
 function injectExperimentTestEntryButton() {
-  if (!isExperimentTestActive()) return;
   if (!["preprocess", "train_eval", "evaluate", "predict"].includes(currentPage)) return;
   const panel = $("rightPanel");
-  const card = panel?.querySelector(".control-card");
+  const card = Array.from(panel?.querySelectorAll(".control-card") || [])
+    .find(item => !item.classList.contains("guide-control-card"));
   const title = card?.querySelector("h3");
-  if (!card || !title || card.querySelector("[data-test-open]")) return;
-  title.insertAdjacentHTML("afterend", experimentTestButtonHtml());
+  if (!card || !title || card.querySelector("[data-test-open], [data-practice-test-open]")) return;
+  const practice = !isExperimentTestActive();
+  if (practice && !currentPracticeTestGroup().length) return;
+  title.insertAdjacentHTML("afterend", experimentTestButtonHtml({ practice }));
+  if (typeof updatePreprocessLoadGuide === "function") updatePreprocessLoadGuide();
 }
 
 function startExperimentTest() {
@@ -505,7 +520,15 @@ function openExperimentTestModal() {
   restoreExperimentTestModalState(group);
 }
 
-function experimentTestModalHtml(group) {
+function openPracticeTestModal() {
+  const group = currentPracticeTestGroup();
+  if (!group.length) return;
+  document.querySelector(".test-modal-backdrop")?.remove();
+  document.body.insertAdjacentHTML("beforeend", experimentTestModalHtml(group, { practice: true }));
+}
+
+function experimentTestModalHtml(group, options = {}) {
+  const practice = Boolean(options.practice);
   const state = getExperimentTestState();
   const first = group[0];
   const questionHtml = experimentTestQuestionHtml(group);
@@ -514,7 +537,7 @@ function experimentTestModalHtml(group) {
       <section class="test-modal" role="dialog" aria-modal="true" aria-label="实验测试题目">
         <div class="test-modal-head">
           <div>
-            <div class="code-kicker">实验测试 ${state.currentIndex + 1}${group.length > 1 ? `-${state.currentIndex + group.length}` : ""} / ${EXPERIMENT_TEST_FLOW.length}</div>
+            <div class="code-kicker">${practice ? "随堂测试" : `实验测试 ${state.currentIndex + 1}${group.length > 1 ? `-${state.currentIndex + group.length}` : ""} / ${EXPERIMENT_TEST_FLOW.length}`}</div>
             <h2>${escapeHtml(first.title)}</h2>
           </div>
           <button class="code-close-btn" type="button" data-test-close>×</button>
@@ -532,8 +555,8 @@ function experimentTestModalHtml(group) {
           ${questionHtml}
         </div>
         <div class="test-modal-actions">
-          <button class="primary-btn" type="button" data-test-submit>提交答案</button>
-          <button class="secondary-btn" type="button" data-test-next hidden>进入下一题</button>
+          <button class="primary-btn" type="button" ${practice ? "data-practice-test-submit" : "data-test-submit"}>提交答案</button>
+          ${practice ? "" : `<button class="secondary-btn" type="button" data-test-next hidden>进入下一题</button>`}
         </div>
       </section>
     </div>`;
@@ -561,10 +584,36 @@ function experimentTestQuestionHtml(group) {
 function experimentTestOptionHtml(node) {
   return (node.options || []).map((option, index) => `
     <label class="test-option">
-      <input type="radio" name="testAnswer_${escapeHtml(node.id)}" value="${escapeHtml(option)}" ${index === 0 ? "checked" : ""}>
+      <input type="radio" name="testAnswer_${escapeHtml(node.id)}" value="${escapeHtml(option)}">
       <span>${escapeHtml(String.fromCharCode(65 + index))}. ${escapeHtml(option)}</span>
     </label>
   `).join("");
+}
+
+function practiceTestRecords(group) {
+  return group.map(node => {
+    const checked = document.querySelector(`input[name="testAnswer_${node.id}"]:checked`);
+    const userAnswer = checked?.value || "";
+    const correct = userAnswer === node.answer;
+    return {
+      id: node.id,
+      module: node.module,
+      title: node.title,
+      question: node.question,
+      userAnswer,
+      correctAnswer: node.answer,
+      correct,
+      score: correct ? 1 : 0,
+      explanation: node.explanation
+    };
+  });
+}
+
+function submitPracticeTestAnswer() {
+  const group = currentPracticeTestGroup();
+  if (!group.length) return;
+  const records = practiceTestRecords(group);
+  showExperimentTestSubmittedState(group, records, { practice: true });
 }
 
 function submitExperimentTestAnswer() {
@@ -660,7 +709,8 @@ function restoreExperimentTestModalState(group) {
   }
 }
 
-function showExperimentTestSubmittedState(group, records) {
+function showExperimentTestSubmittedState(group, records, options = {}) {
+  const practice = Boolean(options.practice);
   records.forEach(record => {
     const node = group.find(item => item.id === record.id) || record;
     const feedback = document.querySelector(`[data-test-feedback="${record.id}"]`);
@@ -670,10 +720,15 @@ function showExperimentTestSubmittedState(group, records) {
     feedback.innerHTML = `<strong>${record.correct ? "回答正确" : "回答错误"}</strong><p>${escapeHtml(node.explanation)}</p>`;
   });
   document.querySelectorAll('.test-question-card input[type="radio"]').forEach(input => { input.disabled = true; });
+  group.forEach(node => {
+    document.querySelectorAll(`input[name="testAnswer_${node.id}"]`).forEach(input => { input.disabled = true; });
+  });
   const submit = document.querySelector("[data-test-submit]");
   if (submit) submit.hidden = true;
+  const practiceSubmit = document.querySelector("[data-practice-test-submit]");
+  if (practiceSubmit) practiceSubmit.hidden = true;
   const next = document.querySelector("[data-test-next]");
-  if (next) {
+  if (next && !practice) {
     const state = getExperimentTestState();
     next.hidden = false;
     next.textContent = state.currentIndex >= EXPERIMENT_TEST_FLOW.length - 1 ? "查看测试结果" : "进入下一题";
@@ -732,12 +787,14 @@ function bindExperimentTestRuntime() {
     if (target.closest("[data-test-exit]")) exitExperimentTest();
     if (target.closest("[data-test-continue-current]")) goToExperimentTestNode(getExperimentTestState().currentIndex);
     if (target.closest("[data-test-open]")) openExperimentTestModal();
+    if (target.closest("[data-practice-test-open]")) openPracticeTestModal();
     if (target.closest("[data-test-close]")) document.querySelector(".test-modal-backdrop")?.remove();
     if (target.closest("[data-test-result-page]")) {
       document.querySelector(".test-modal-backdrop")?.remove();
       setPage("experiment_test");
     }
     if (target.closest("[data-test-submit]")) submitExperimentTestAnswer();
+    if (target.closest("[data-practice-test-submit]")) submitPracticeTestAnswer();
     if (target.closest("[data-test-next]")) continueExperimentTest();
   });
 

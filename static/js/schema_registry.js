@@ -162,7 +162,7 @@ function chartTitle(view) {
   if (view === "r2") return "R²";
   return ({
     raw: "原始散点图",
-    standardized: "预处理散点图",
+    standardized: "标准散点图",
     single_corr: "单特征线性相关系数",
     all_corr: "全特征线性相关系数",
     model_train: "模型训练",
@@ -183,7 +183,7 @@ function chartSub(view, data) {
   if (view === "gradient_descent") return "dw、db 随训练轮数的变化";
   if (view === "gradient") return "w-b 参数空间中的 MSE 损失等高线";
   if (view === "raw") return `${data.feature} 与 MEDV 的原始关系`;
-  if (view === "standardized") return `${data.standardized?.feature_name || data.x_column} 与 MEDV 的关系`;
+  if (view === "standardized") return `${data.standardized?.feature_name || data.x_column} 与标准化 MEDV 的关系`;
   if (view === "single_corr") return "当前特征与 MEDV 的 Pearson 相关系数";
   if (view === "all_corr") return "所有特征与 MEDV 的 Pearson 相关系数";
   if (view === "model_train") return "样本点、当前回归线和最优参考线";

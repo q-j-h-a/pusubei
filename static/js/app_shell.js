@@ -32,6 +32,7 @@ async function setPage(page) {
   setActive(page);
   destroyDataGrid();
   disposeCharts();
+  if (page !== "preprocess" && typeof closePreprocessLoadGuide === "function") closePreprocessLoadGuide();
   if (page !== "preprocess") clearPageTopSlot();
   $("topFeature").textContent = `当前特征 ${currentFeature()}`;
   try {
