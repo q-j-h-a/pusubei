@@ -43,6 +43,16 @@ Do not use this skill for:
    - If Docker is not installed, run local static checks such as Python compile/import checks where dependencies allow.
    - Clearly say when Docker build was not executed.
 
+## Python Package Source
+
+For this teaching-project deployment context, prefer the Tsinghua PyPI mirror in Docker builds to avoid slow dependency downloads from the default PyPI index in mainland China:
+
+```dockerfile
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+```
+
+If the user explicitly asks for the default PyPI index or another mirror, follow the user request.
+
 ## Python Web App Rules
 
 ### Flask
@@ -76,7 +86,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 COPY . .
 

@@ -13,6 +13,7 @@
 - 模型评估：展示当前训练模型的拟合效果，并解释 RMSE、MAE、R²。
 - 模型预测：基于当前模型参数 `w`、`b` 和输入特征值 `x` 计算预测 MEDV，并展示预测可视化和计算过程。
 - 代码解释层：预处理、训练、评估、预测页面均提供“查看代码”入口，展示当前步骤的核心代码、操作说明和解释。
+- AI 学习助手：实验页提供可拖动的悬浮 AI 助手，点击后展开聊天框，支持快捷问题和自由提问；助手会结合当前页面、步骤、特征、训练参数、预测输入和测试状态生成提示。
 - 界面引导：右侧控制面板提供全局引导和当前页面引导开关；数据预处理的“加载原始数据”步骤已接入 8 步任务式引导，覆盖查看测试题、加载数据、观察结果和查看代码。
 - 随堂任务提示：普通实验模式下也会在当前功能卡片中显示“查看测试内容”，学生可随时打开当前步骤的操作要求和观察问题。
 - 实验测试：左侧新增“实验测试”入口，按完整实验流程引导学生完成测试题，并生成成绩和答题详情。
@@ -28,6 +29,31 @@ python app.py
 
 ```text
 http://127.0.0.1:5000/
+```
+
+### DeepSeek 配置
+
+AI 学习助手通过后端接口调用 DeepSeek，API Key 不应写入前端。服务端读取顺序为：
+
+```text
+环境变量 DEEPSEEK_API_KEY
+-> config.local.json 中的 deepseek_api_key
+```
+
+本地开发可复制或直接编辑根目录 `config.local.json`：
+
+```json
+{
+  "deepseek_api_key": "你的真实 key",
+  "deepseek_model": "deepseek-v4-flash",
+  "deepseek_api_url": "https://api.deepseek.com/chat/completions"
+}
+```
+
+`config.local.json` 已加入 `.gitignore`，不要提交真实 key。`config.local.example.json` 只用于保存示例格式。服务器或 Docker 部署时推荐使用环境变量：
+
+```bash
+docker run -d --name simple-linear-regression -p 15000:5000 -e DEEPSEEK_API_KEY=你的真实key simple-linear-regression:latest
 ```
 
 ## Docker 部署
@@ -103,6 +129,7 @@ location /wj1xbghs/ {
 ```text
 simple_linear_regression/
 ├─ app.py
+├─ config.local.example.json
 ├─ requirements.txt
 ├─ README.md
 ├─ web_ui_structure_cn.md
@@ -118,6 +145,7 @@ simple_linear_regression/
 │  ├─ theory_deck_overrides.json
 │  ├─ theory-html/
 │  └─ js/
+│     ├─ ai_assistant.js
 │     ├─ app_shell.js
 │     ├─ experiment_test.js
 │     ├─ theory_page.js
@@ -270,6 +298,27 @@ y_pred = w * x + b
 - 只有点击“开始预测”或在输入框按 Enter，才更新预测点、预测 MEDV 和计算过程。
 - “开始预测”和“查看预测代码”在同一个按钮容器内，保持等宽和统一间距。
 
+### AI 学习助手
+
+AI 学习助手由以下文件和接口组成：
+
+```text
+static/js/ai_assistant.js
+templates/index.html 中 .ai-assistant-* 样式与悬浮组件
+POST /api/ai_assistant
+config.local.json / DEEPSEEK_API_KEY
+```
+
+交互规则：
+
+- 理论页不显示 AI 助手。
+- 普通实验页显示右下角可拖动悬浮按钮，点击后展开聊天框。
+- “实验测试”说明页和完整测试进行中隐藏 AI 助手，避免干扰正式测试；测试完成结果页或退出测试回到自由实验后重新显示。
+- 快捷问题包括“我现在应该做什么？”“这个图怎么看？”“参数是什么意思？”和“下一步是什么？”。
+- 当前版本只支持文字提问；粘贴图片时会提示学生用文字描述图中现象。
+- 聊天上下文会携带当前页面、当前步骤、当前特征、训练表单状态、预测表单状态和测试状态。
+- 后端提示词要求 AI 在测试场景只给思路和观察方向，不直接给最终选项或完整答案。
+
 ## 实验测试模块
 
 左侧实验部分新增“实验测试”入口。流程为：
@@ -331,6 +380,7 @@ GET  /api/page_schema?experiment=<experiment>&page=<page>
 GET  /api/chart_registry?experiment=<experiment>&page=<page>
 GET  /api/theory_deck_overrides
 POST /api/theory_deck_overrides
+POST /api/ai_assistant
 POST /api/run_action
 POST /api/chart_data
 ```
@@ -346,6 +396,7 @@ simple_linear_regression
 ```bash
 python -m compileall app.py core models
 node --check static/js/api.js
+node --check static/js/ai_assistant.js
 node --check static/js/app_shell.js
 node --check static/js/chart_renderers.js
 node --check static/js/control_renderers.js
@@ -453,6 +504,8 @@ node --check static/js/theory-pages/thinking.js
 - 理论部分以 `static/js/theory-pages/*.js` 和 `static/theory_deck_overrides.json` 为主，不要只同步其中一个。
 - 修改理论页样式时，要同步检查 `templates/index.html` 中 `.theory-*` 相关 CSS。
 - 新增测试题优先修改 `static/js/experiment_test.js` 中的 `EXPERIMENT_TEST_FLOW`。
+- 修改 AI 学习助手时同步检查 `static/js/ai_assistant.js`、`templates/index.html` 中 `.ai-assistant-*` 样式和 `app.py` 中 `/api/ai_assistant`。
+- 真实 DeepSeek Key 只放在环境变量或 `config.local.json`，不要写入 `config.local.example.json`、README、前端 JS 或提交记录。
 - 随堂测试和测试模式都只添加测试入口和弹窗，不应替换原实验右侧控制面板。
 - 修改界面引导时优先检查 `static/js/preprocess_page.js` 中的引导状态机，以及 `templates/index.html` 中 `.guide-*` 样式。
 - 开始实验测试时应重置四个实验模块状态，避免沿用自由实验中的旧结果。

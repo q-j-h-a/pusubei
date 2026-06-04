@@ -63,6 +63,7 @@ async function setPage(page) {
         applyShellLayout();
         resizeActiveCharts();
       });
+      window.dispatchEvent(new CustomEvent("app-page-change", { detail: { page } }));
     }
   }
 }

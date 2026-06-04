@@ -344,6 +344,9 @@ function setExperimentTestState(next) {
   viewStateStore[EXPERIMENT_TEST_STATE_KEY] = { ...defaultExperimentTestState(), ...next };
   updateExperimentTestNavState();
   injectExperimentTestEntryButton();
+  window.dispatchEvent(new CustomEvent("experiment-test-state-change", {
+    detail: { state: getExperimentTestState() }
+  }));
 }
 
 function cloneExperimentSnapshotValue(value) {

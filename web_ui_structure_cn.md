@@ -17,6 +17,9 @@ body
       ├─ .splitter.splitter-right
       └─ aside.assistant
          └─ #rightPanel
+└─ #aiAssistantWidget
+   ├─ #aiAssistantBubble
+   └─ #aiAssistantPanel
 ```
 
 默认宽度变量：
@@ -28,6 +31,8 @@ body
 ```
 
 左侧为导航，中间为主要教学内容，右侧为当前页面控制面板。理论页进入 `.shell.theory` 模式后会隐藏右侧控制面板，只保留左侧导航和中间课件区域。
+
+AI 学习助手不参与三栏 grid 布局，使用 `position: fixed` 作为悬浮组件覆盖在页面上，避免挤占右侧控制面板和 GridStack 图表区域。
 
 ## 2. 左侧导航
 
@@ -387,7 +392,87 @@ static/js/predict_page.js
 - 不展示 ECharts、GridStack、DOM 等前端工程代码。
 - 代码与当前页面状态联动，例如特征、学习率、w、b、输入类型和指标模式。
 
-## 11. 实验测试模块
+## 11. AI 学习助手
+
+入口文件：
+
+```text
+static/js/ai_assistant.js
+```
+
+模板结构位于 `templates/index.html` 的 body 末尾：
+
+```text
+#aiAssistantWidget.ai-assistant-widget
+├─ #aiAssistantBubble.ai-assistant-bubble
+└─ #aiAssistantPanel.ai-assistant-panel
+   ├─ .ai-assistant-head
+   ├─ #aiAssistantMessages.ai-assistant-messages
+   ├─ .ai-assistant-prompts
+   └─ #aiAssistantForm.ai-assistant-form
+```
+
+主要交互：
+
+- 悬浮按钮可拖动，位置保存到 `localStorage` 的 `aiAssistantWidgetPositionV1`。
+- 点击悬浮按钮展开或收起聊天框。
+- 拖动和点击通过移动距离区分，避免拖动时误展开。
+- 聊天记录只在 `.ai-assistant-messages` 区域滚动，消息气泡自身不应出现滚动条。
+- AI 消息样式使用 `.ai-role-assistant` 和 `.ai-role-user`，不要使用 `.assistant` / `.user` 这类通用类名，避免和右侧栏 `.assistant` 冲突。
+- 当前版本只支持文字提问；粘贴图片时会提示学生用文字描述图中现象。
+
+显示规则：
+
+- 理论页不显示 AI 助手。
+- 普通实验页显示 AI 助手。
+- `experiment_test` 测试说明页不显示 AI 助手。
+- 完整实验测试进行中不显示 AI 助手。
+- 测试完成结果页可以显示 AI 助手。
+- 退出测试回到自由实验后重新显示 AI 助手。
+
+上下文采集：
+
+```js
+{
+  page,
+  preprocessStep,
+  trainStep,
+  evaluateMetric,
+  predictForm,
+  trainFormState,
+  testState,
+  feature
+}
+```
+
+页面切换由 `static/js/app_shell.js` 派发 `app-page-change` 事件，测试状态变化由 `static/js/experiment_test.js` 派发 `experiment-test-state-change` 事件，AI 助手监听后刷新显示状态。
+
+后端接口：
+
+```text
+POST /api/ai_assistant
+```
+
+DeepSeek 配置读取顺序：
+
+```text
+环境变量 DEEPSEEK_API_KEY
+-> config.local.json 中的 deepseek_api_key
+```
+
+本地配置文件格式：
+
+```json
+{
+  "deepseek_api_key": "你的真实 key",
+  "deepseek_model": "deepseek-v4-flash",
+  "deepseek_api_url": "https://api.deepseek.com/chat/completions"
+}
+```
+
+`config.local.json` 用于本机真实配置并加入 `.gitignore`；`config.local.example.json` 只保留示例格式，不应写入真实 key。
+
+## 12. 实验测试模块
 
 入口文件：
 
@@ -496,7 +581,7 @@ experimentTestStateV1 = {
 - 结果页中间区域展示总成绩、分模块成绩和答题详情。
 - 重新开始测试和返回自由实验按钮统一放在右侧控制面板。
 
-## 12. 状态存储
+## 13. 状态存储
 
 前端状态主要保存在 `viewStateStore` 中。常见 key：
 
@@ -512,6 +597,7 @@ currentDatasetMetaV1
 experimentTestStateV1
 guideGlobalEnabledV1
 guidePageStateV1
+aiAssistantWidgetPositionV1
 ```
 
 维护原则：
@@ -523,8 +609,9 @@ guidePageStateV1
 - 图表刷新应由明确动作触发，例如加载数据、开始训练、开始预测、提交测试答案。
 - 全局引导开关持久化到 `localStorage`。
 - 当前页面引导状态只保存在 `viewStateStore`，刷新后默认重新启用。
+- AI 助手悬浮位置保存到 `localStorage`，聊天历史只保存在当前页面运行内，不持久化。
 
-## 13. 后端接口
+## 14. 后端接口
 
 主要接口：
 
@@ -536,6 +623,7 @@ GET  /api/page_schema
 GET  /api/chart_registry
 GET  /api/theory_deck_overrides
 POST /api/theory_deck_overrides
+POST /api/ai_assistant
 POST /api/run_action
 POST /api/chart_data
 ```
@@ -556,7 +644,25 @@ POST /api/theory_deck_overrides
 }
 ```
 
-## 14. Docker 与反向代理部署
+AI 助手接口：
+
+```text
+POST /api/ai_assistant
+```
+
+请求体包含：
+
+```json
+{
+  "question": "我现在应该做什么？",
+  "context": {},
+  "history": []
+}
+```
+
+后端会把当前实验上下文和固定教学提示词一起发送到 DeepSeek。测试场景下提示词要求只给思路和观察方向，不直接给最终选项或完整答案。
+
+## 15. Docker 与反向代理部署
 
 当前项目可通过根目录 `Dockerfile` 构建镜像。Flask/Gunicorn 在容器内部监听 `0.0.0.0:5000`：
 
@@ -619,7 +725,7 @@ location /wj1xbghs/ {
 
 如果修改二级目录名称，只需要同步修改 Nginx 的 `location` 前缀。推荐优先使用独立域名或子域名代理到站点根路径 `/`，二级目录适合服务器上已有多个项目共用同一域名或 IP 时使用。
 
-## 15. 样式维护要点
+## 16. 样式维护要点
 
 - 不要把卡片嵌套在卡片里。
 - 右侧控制面板按钮应放在统一父容器中，通过 `gap` 管理间距。
@@ -628,13 +734,16 @@ location /wj1xbghs/ {
 - “查看测试内容”按钮插入当前功能卡片，不插入界面引导卡片。
 - 引导高亮样式集中在 `.guide-*`，大面积目标使用 `.guide-highlight-large` 降低呼吸效果强度。
 - 理论页样式集中在 `.theory-*`，同步理论功能时要同时检查模板样式。
+- AI 学习助手样式集中在 `.ai-assistant-*` 和 `.ai-role-*`，不要使用 `.assistant` 作为消息气泡类名，避免继承右侧栏样式。
+- AI 聊天记录滚动应发生在 `.ai-assistant-messages`，不要让单条 `.ai-message` 出现内部滚动条。
 - 左侧“模型介绍”的下拉符号使用 `&rsaquo;`，避免编码问题变成问号。
 
-## 16. 验证命令
+## 17. 验证命令
 
 ```bash
 python -m compileall app.py core models
 node --check static/js/api.js
+node --check static/js/ai_assistant.js
 node --check static/js/app_shell.js
 node --check static/js/chart_renderers.js
 node --check static/js/control_renderers.js
@@ -665,9 +774,9 @@ node --check static/js/theory-pages/evaluation.js
 node --check static/js/theory-pages/result.js
 node --check static/js/theory-pages/thinking.js
 ```
-## 17. 当前交互补充
+## 18. 当前交互补充
 
-### 17.1 查看测试内容的定位
+### 18.1 查看测试内容的定位
 
 实验部分每个模块右侧的“查看测试内容”用于展示当前页面的操作要求和观察目标，不再作为答题测验使用。
 
@@ -676,13 +785,13 @@ node --check static/js/theory-pages/thinking.js
 - 弹窗底部不显示“提交答案”按钮。
 - 学生点击“完成本步引导”或完整完成当前模块引导后，应自动再次看到当前页面的任务提示，帮助学生回到“现在要做什么”；点击“关闭引导”只退出当前引导，不自动弹出任务提示。
 
-### 17.2 数据预处理引导流程补充
+### 18.2 数据预处理引导流程补充
 
 数据预处理模块的首次“加载原始数据”引导中，学生点击任务提示里的“我知道了”后，不再额外引导关闭弹窗右上角的叉号，而是直接进入“选择要加载的数据集”步骤。
 
 这样可以减少重复动作：任务提示负责说明目标，关闭任务提示后，学习引导立即回到实验界面操作。
 
-### 17.3 模型训练默认参数
+### 18.3 模型训练默认参数
 
 模型训练页中几个训练相关小模块的默认特征统一为 `CRIM`，默认周期数统一为 `120`，包括：
 
@@ -696,7 +805,7 @@ node --check static/js/theory-pages/thinking.js
 
 自动演示允许因收敛提前停止：如果 Loss 连续多轮几乎不变，系统会视为模型已经收敛并停止播放。这个停止点可能早于周期数输入框中的值。
 
-### 17.4 训练图固定尺度
+### 18.4 训练图固定尺度
 
 训练相关散点图和残差图默认使用 `w=0`、`b=0` 时的自适应坐标范围作为全程固定尺度。
 
@@ -704,7 +813,7 @@ node --check static/js/theory-pages/thinking.js
 - 特征或数据尺度变化后重新计算固定尺度，但计算基准仍然是 `w=0`、`b=0`。
 - 训练过程中保持坐标轴范围不变，只更新回归模型、残差或相关曲线。
 
-### 17.5 熟悉回归过程引导
+### 18.5 熟悉回归过程引导
 
 “熟悉回归过程”小模块主要帮助学生认识训练页上可操作的区域。推荐引导顺序如下：
 
@@ -715,7 +824,7 @@ node --check static/js/theory-pages/thinking.js
 
 高亮时必须保证目标区域完整显示在视口内，避免只露出局部控件。
 
-### 17.6 熟悉预处理影响引导
+### 18.6 熟悉预处理影响引导
 
 “熟悉预处理影响”小模块用于让学生直观看到原始尺度和标准化尺度下训练表现的差异，并感受学习率对训练步长的影响。
 
@@ -730,7 +839,7 @@ node --check static/js/theory-pages/thinking.js
 
 学习率设置步骤中，学习率框内的滑块、数值和上下调节按钮都应处在高亮区域内。
 
-### 17.7 熟悉损失函数引导
+### 18.7 熟悉损失函数引导
 
 “熟悉损失函数”小模块用于让学生从单个样本残差，逐步过渡到整体误差分布和残差直方图。
 
@@ -745,7 +854,7 @@ node --check static/js/theory-pages/thinking.js
 
 损失函数引导应由用户动作推进，例如点击“随机 10 个样本”或“单步训练”。图表重绘不应自动重置或重复触发引导，否则容易在“特征选择”和“随机 10 个样本”之间来回跳动。
 
-### 17.8 熟悉优化准则引导
+### 18.8 熟悉优化准则引导
 
 “熟悉优化准则”小模块用于让学生从参数空间理解梯度下降方向、更新轨迹和 Loss 下降趋势。
 
@@ -758,7 +867,7 @@ node --check static/js/theory-pages/thinking.js
 5. 高亮 `Loss 等高线图`，说明红点、负梯度方向和更新轨迹。
 6. 高亮 `MSE Loss 随 epoch 的变化`，观察单步更新后 Loss 是否下降。
 
-### 17.9 自定义参数训练引导
+### 18.9 自定义参数训练引导
 
 “自定义参数训练”小模块用于收束训练页前面几节内容，让学生把特征、参数、单步训练、图表观察和本轮计算过程连起来。
 
@@ -780,7 +889,7 @@ node --check static/js/theory-pages/thinking.js
 
 组合目标需要覆盖两张图和中间间隙，并在 `templates/index.html` 中设置白底高亮，避免 gap 被 `.guide-backdrop` 压暗。
 
-### 17.10 模型评估引导
+### 18.10 模型评估引导
 
 模型评估页引导围绕上一节自定义参数训练得到的当前模型展开，不重新训练模型。
 
@@ -798,7 +907,7 @@ evaluateMetricModeV1
 evaluate_metrics
 ```
 
-### 17.11 模型预测引导
+### 18.11 模型预测引导
 
 模型预测页引导用于把当前训练模型、新输入、预测图表和计算过程串起来。
 

@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+import urllib.error
+import urllib.request
 
 from flask import Flask, render_template, request, jsonify
 
@@ -27,6 +30,26 @@ app.json.sort_keys = False
 
 BASE_DIR = Path(__file__).resolve().parent
 THEORY_DECK_OVERRIDES_PATH = BASE_DIR / "static" / "theory_deck_overrides.json"
+LOCAL_CONFIG_PATH = BASE_DIR / "config.local.json"
+
+
+def _read_local_config():
+    if not LOCAL_CONFIG_PATH.exists():
+        return {}
+    try:
+        data = json.loads(LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+LOCAL_CONFIG = _read_local_config()
+DEEPSEEK_API_URL = (
+    os.getenv("DEEPSEEK_API_URL")
+    or LOCAL_CONFIG.get("deepseek_api_url")
+    or "https://api.deepseek.com/chat/completions"
+)
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL") or LOCAL_CONFIG.get("deepseek_model") or "deepseek-chat"
 
 
 JSON_ACTION_HANDLERS = dict(JSON_ACTIONS)
@@ -77,6 +100,101 @@ def _upload_dataset_response(file, source_type, experiment_id=None):
         return jsonify({"error": str(exc)}), 500
 
 
+def _ai_context_text(context):
+    if not isinstance(context, dict):
+        return "当前页面上下文：暂无。"
+
+    page_labels = {
+        "preprocess": "数据预处理",
+        "train_eval": "模型训练",
+        "evaluate": "模型评估",
+        "predict": "模型预测",
+        "experiment_test": "实验测试",
+    }
+    preprocess_labels = {
+        "load": "加载原始数据",
+        "detail": "数据详情",
+        "raw_viz": "原始数据可视化",
+        "standardize": "数据标准化",
+        "standard_viz": "标准数据可视化",
+    }
+    train_labels = {
+        "process": "熟悉回归过程",
+        "preprocess_effect": "熟悉预处理影响",
+        "loss": "熟悉损失函数",
+        "optimization": "熟悉优化准则",
+        "custom": "自定义参数训练",
+    }
+
+    page = context.get("page") or ""
+    step = ""
+    if page == "preprocess":
+        step = preprocess_labels.get(context.get("preprocessStep"), context.get("preprocessStep") or "")
+    elif page == "train_eval":
+        step = train_labels.get(context.get("trainStep"), context.get("trainStep") or "")
+    elif page == "evaluate":
+        step = "评价指标：" + str(context.get("evaluateMetric") or "RMSE")
+    elif page == "predict":
+        step = "模型预测"
+    elif page == "experiment_test":
+        step = "实验测试"
+
+    lines = [
+        f"当前页面：{page_labels.get(page, page or '未知')}",
+        f"当前步骤：{step or '未知'}",
+        f"当前特征：{context.get('feature') or '未知'}",
+    ]
+
+    train_state = context.get("trainFormState")
+    if isinstance(train_state, dict):
+        lines.append(
+            "训练参数："
+            f"w={train_state.get('w0', train_state.get('w', '未知'))}，"
+            f"b={train_state.get('b0', train_state.get('b', '未知'))}，"
+            f"学习率={train_state.get('lr', train_state.get('learningRate', '未知'))}，"
+            f"周期数={train_state.get('epochs', '未知')}"
+        )
+
+    predict_state = context.get("predictForm")
+    if isinstance(predict_state, dict):
+        lines.append(
+            "预测输入："
+            f"输入类型={predict_state.get('predictInputMode', '未知')}，"
+            f"输入值={predict_state.get('predictInput', '未知')}"
+        )
+
+    test_state = context.get("testState")
+    if isinstance(test_state, dict) and test_state.get("active"):
+        lines.append("当前处于完整实验测试模式。")
+
+    return "\n".join(lines)
+
+
+def _call_deepseek(messages):
+    api_key = (os.getenv("DEEPSEEK_API_KEY") or LOCAL_CONFIG.get("deepseek_api_key") or "").strip()
+    if not api_key or api_key.startswith("请在这里填写"):
+        raise ValueError("未配置 DeepSeek API Key，请在环境变量 DEEPSEEK_API_KEY 或 config.local.json 中设置。")
+
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "temperature": 0.35,
+        "max_tokens": 700,
+    }
+    req = urllib.request.Request(
+        DEEPSEEK_API_URL,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        result = json.loads(resp.read().decode("utf-8"))
+    return result["choices"][0]["message"]["content"].strip()
+
+
 
 @app.route('/')
 def index():
@@ -86,6 +204,52 @@ def index():
         feature_names=FEATURE_COLUMNS,
         default_feature="RM",
     )
+
+
+@app.route("/api/ai_assistant", methods=["POST"])
+def api_ai_assistant():
+    try:
+        body = request.get_json() or {}
+        question = str(body.get("question") or "").strip()
+        if not question:
+            return jsonify({"error": "请输入问题"}), 400
+
+        context = body.get("context") if isinstance(body.get("context"), dict) else {}
+        history = body.get("history") if isinstance(body.get("history"), list) else []
+        safe_history = []
+        for item in history[-8:]:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = str(item.get("content") or "").strip()
+            if role in {"user", "assistant"} and content:
+                safe_history.append({"role": role, "content": content[:1200]})
+
+        system_prompt = (
+            "你是一个简单线性回归 Web 教学实验的 AI 学习助手。"
+            "你的目标是帮助初学者知道当前应该做什么、观察什么、理解什么。"
+            "回答必须使用中文，简洁具体，优先贴合当前实验页面和步骤。"
+            "不要编造页面上不存在的按钮、数据或图表。"
+            "如果学生处于实验测试或询问测试题答案，只能给思路和观察方向，不能直接给最终选项或完整答案。"
+            "回答通常控制在 4 到 8 句话。"
+        )
+        context_prompt = "当前实验上下文：\n" + _ai_context_text(context)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context_prompt},
+            *safe_history,
+            {"role": "user", "content": question},
+        ]
+        return jsonify({"answer": _call_deepseek(messages)})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        return jsonify({"error": f"AI 服务请求失败：{detail or exc.reason}"}), 502
+    except urllib.error.URLError as exc:
+        return jsonify({"error": f"无法连接 AI 服务：{exc.reason}"}), 502
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 
