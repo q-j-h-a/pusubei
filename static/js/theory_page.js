@@ -1,6 +1,6 @@
 // Theory Page: editable student-facing slide decks.
 
-const THEORY_DECK_OVERRIDE_URL = "/api/theory_deck_overrides";
+const THEORY_DECK_OVERRIDE_URL = apiUrl("/api/theory_deck_overrides");
 const THEORY_PAGE_STATE = {
   pageId: "basic",
   currentSlide: 0,
@@ -1617,7 +1617,7 @@ function renderPageCharts(topicId) {
       resolve({});
     };
 
-    iframe.src = `/static/theory-html/${topicId}.html`;
+    iframe.src = assetUrl(`/static/theory-html/${topicId}.html`);
   });
 }
 
@@ -1666,7 +1666,7 @@ async function downloadTheoryDetailWord(pageId) {
         return { topicId, htmlText: THEORY_PAGE_STATE.rawDetailHtml };
       }
       
-      const src = `/static/theory-html/${topicId}.html`;
+      const src = assetUrl(`/static/theory-html/${topicId}.html`);
       try {
         const resp = await fetch(src, { cache: "no-store" });
         if (!resp.ok) return { topicId, htmlText: "" };
@@ -2073,7 +2073,7 @@ function renderTheoryDetail(pageId) {
     saveBtn.textContent = "保存中...";
 
     try {
-      const resp = await fetch("/api/save_theory_html", {
+      const resp = await fetch(apiUrl("/api/save_theory_html"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2584,7 +2584,7 @@ function cleanHtmlFormatting(html) {
 }
 
 function renderTheoryHtmlSlot(pageId) {
-  const src = `/static/theory-html/${pageId}.html`;
+  const src = assetUrl(`/static/theory-html/${pageId}.html`);
   return `<div class="html-lesson hidden" data-theory-html="${escapeHtml(src)}"><iframe title="理论讲义"></iframe></div>`;
 }
 async function loadTheoryHtml(pageId) {

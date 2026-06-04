@@ -5,10 +5,24 @@ const EVALUATE_METRICS = [
   { id: "mae", label: "MAE" },
   { id: "r2", label: "R²" },
 ];
+const EVALUATE_GUIDE_ID = "evaluate_metrics";
+const EVALUATE_GUIDE_STEPS = new Set(["evaluate_fit", "evaluate_rmse", "evaluate_mae", "evaluate_r2"]);
 
 function evaluateMetricMode() {
   const saved = viewStateStore.evaluateMetricModeV1;
   return EVALUATE_METRICS.some(item => item.id === saved) ? saved : "rmse";
+}
+
+function guideEnabledForEvaluate() {
+  const state = guidePageState(EVALUATE_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function ensureEvaluateGuideStep() {
+  const state = guidePageState(EVALUATE_GUIDE_ID);
+  if (!EVALUATE_GUIDE_STEPS.has(state.step)) {
+    setGuidePageState({ step: "evaluate_fit" }, EVALUATE_GUIDE_ID);
+  }
 }
 
 function evaluatePanelHtml() {
@@ -38,6 +52,7 @@ function normalizeEvaluateGridLayout(view, layout) {
 }
 
 function evaluateEmptyState() {
+  closeEvaluateGuide();
   destroyDataGrid();
   disposeCharts();
   $("main").innerHTML = `
@@ -105,6 +120,7 @@ function renderEvaluation() {
   metric.setOption(evaluateGaugeOnlyOption(evaluateMetricMode(), frameIndex), true);
   updateEvaluateExplanation();
   requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+  scheduleEvaluateGuideUpdate(140);
 }
 
 function ensureEvaluateGrid() {
@@ -163,6 +179,141 @@ function bindEvaluateMetricControls() {
       renderEvaluation();
     });
   });
+}
+
+function evaluateGuideSpec() {
+  const state = guidePageState(EVALUATE_GUIDE_ID);
+  const step = state.step || "evaluate_fit";
+  if (step === "evaluate_rmse") {
+    return {
+      step,
+      target: '[data-chart-card="evaluate_metric"]',
+      title: "查看 RMSE 指标",
+      body: "默认先看 RMSE。它由 MSE 开平方得到，越小表示整体预测误差越小；因为会放大较大的误差，所以能提醒模型是否存在明显偏离点。",
+      action: "下一步",
+    };
+  }
+  if (step === "evaluate_mae") {
+    return {
+      step,
+      target: '[data-chart-card="evaluate_metric"]',
+      title: "切换到 MAE",
+      body: "MAE 表示平均绝对误差，也越小越好。它比 RMSE 更平稳，不会像 RMSE 那样强烈放大个别大误差。",
+      action: "下一步",
+    };
+  }
+  if (step === "evaluate_r2") {
+    return {
+      step,
+      target: '[data-chart-card="evaluate_metric"]',
+      title: "切换到 R²",
+      body: "R² 衡量模型对目标值变化的解释能力，越接近 1 表示拟合解释力越强。它不是误差单位，而是解释程度。",
+      action: "完成本步引导",
+    };
+  }
+  return {
+    step: "evaluate_fit",
+    target: '[data-chart-card="evaluate_fit"]',
+    title: "查看当前训练模型",
+    body: "这张标准化散点图复用上一节自定义参数训练得到的当前模型。红色线是当前回归线，绿色虚线是最优参考线，用来判断训练后的模型是否贴近样本趋势。",
+    action: "下一步",
+  };
+}
+
+function updateEvaluateGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "evaluate" || !guideEnabledForEvaluate()) {
+      closeEvaluateGuide();
+      return;
+    }
+    ensureEvaluateGuideStep();
+    const spec = evaluateGuideSpec();
+    const target = document.querySelector(spec.target);
+    if (!target) return;
+    renderEvaluateGuide(spec, target);
+  });
+}
+
+function scheduleEvaluateGuideUpdate(delay = 120) {
+  clearTimeout(scheduleEvaluateGuideUpdate.timer);
+  scheduleEvaluateGuideUpdate.timer = setTimeout(() => {
+    updateEvaluateGuide();
+  }, delay);
+}
+
+function renderEvaluateGuide(spec, target) {
+  closeEvaluateGuide();
+  scrollTrainGuideTargetIntoView?.(target);
+  target.classList.add("guide-highlight", "guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" data-evaluate-guide-step="${escapeHtml(spec.step)}" role="dialog" aria-live="polite" aria-label="模型评估引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        <button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  positionGuideFocusRing(target, true);
+  positionGuidePopover(target);
+  requestAnimationFrame(() => {
+    positionGuideFocusRing(target, true);
+    positionGuidePopover(target);
+  });
+  setTimeout(() => {
+    positionGuideFocusRing(target, true);
+    positionGuidePopover(target);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "evaluate_fit" }, EVALUATE_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeEvaluateGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "evaluate_fit") {
+      setEvaluateMetricMode("rmse");
+      setGuidePageState({ step: "evaluate_rmse" }, EVALUATE_GUIDE_ID);
+      scheduleEvaluateGuideUpdate(120);
+    } else if (step === "evaluate_rmse") {
+      setEvaluateMetricMode("mae");
+      setGuidePageState({ step: "evaluate_mae" }, EVALUATE_GUIDE_ID);
+      scheduleEvaluateGuideUpdate(120);
+    } else if (step === "evaluate_mae") {
+      setEvaluateMetricMode("r2");
+      setGuidePageState({ step: "evaluate_r2" }, EVALUATE_GUIDE_ID);
+      scheduleEvaluateGuideUpdate(120);
+    } else if (step === "evaluate_r2") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "evaluate_fit" }, EVALUATE_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeEvaluateGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function setEvaluateMetricMode(mode) {
+  if (!EVALUATE_METRICS.some(item => item.id === mode)) return;
+  viewStateStore.evaluateMetricModeV1 = mode;
+  evaluateRenderViewsKey = "";
+  renderEvaluation();
+}
+
+function closeEvaluateGuide() {
+  clearTimeout(scheduleEvaluateGuideUpdate.timer);
+  closePreprocessLoadGuide?.();
 }
 
 function evaluateFrameIndex() {

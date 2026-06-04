@@ -135,6 +135,20 @@ function destroyDataGrid() {
 
 function initChart(id) {
   const el = $(id);
+  if (id === "chart_loss_surface_3d" && window.THREE && typeof window.createThreeLossSurfaceChart === "function") {
+    const ch = window.createThreeLossSurfaceChart(el);
+    charts.set(id, ch);
+    const resize = () => ch.resize();
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(resize);
+      observer.observe(el);
+      if (el.parentElement) observer.observe(el.parentElement);
+      chartResizeObservers.set(id, observer);
+    }
+    requestAnimationFrame(resize);
+    bindPrototypeChartInteraction(id, el);
+    return ch;
+  }
   const ch = echarts.init(el);
   charts.set(id, ch);
   const resize = () => ch.resize();

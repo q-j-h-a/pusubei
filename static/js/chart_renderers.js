@@ -162,9 +162,10 @@ function trainScatterOption(frameIndex, chartData = null) {
   const points = chartData?.scatter || trainData.scatter.x.map((x, i) => [x, trainData.scatter.y[i]]);
   const xColumn = escapeHtml(chartData?.x_name || trainData.x_column);
   const target = escapeHtml(chartData?.y_name || trainData.target || "MEDV");
-  const currentLine = chartData?.current_line || lineForParams(frame.w, frame.b);
-  const bestLine = chartData?.best_line || lineForParams(trainData.best.w, trainData.best.b);
-  return {
+  const axisRange = typeof lockedAxisRange === "function" ? lockedAxisRange("model_train") : null;
+  const currentLine = axisRange ? lineForParams(frame.w, frame.b, axisRange) : (chartData?.current_line || lineForParams(frame.w, frame.b));
+  const bestLine = axisRange ? lineForParams(trainData.best.w, trainData.best.b, axisRange) : (chartData?.best_line || lineForParams(trainData.best.w, trainData.best.b));
+  const option = {
     tooltip: { trigger: "item" },
     legend: { top: 12 },
     grid: { left: 58, right: 24, top: 56, bottom: 48 },
@@ -180,6 +181,7 @@ function trainScatterOption(frameIndex, chartData = null) {
       { name: "最优参考线", type: "line", data: bestLine, showSymbol: false, lineStyle: { color: "#0f9f78", width: 2.6, type: "dashed" } }
     ]
   };
+  return typeof applyLockedAxis === "function" ? applyLockedAxis(option, "model_train") : option;
 }
 
 function lossOption(frameIndex, chartData = null) {
@@ -412,7 +414,7 @@ function lossSurface3DOption(frameIndex, chartData = null) {
         name: "dJ/dw tangent",
         type: "line3D",
         data: wTangent,
-        lineStyle: { color: "#7c3aed", width: 5, type: "dashed" }
+        lineStyle: { color: "#ef4444", width: 5, type: "dashed" }
       },
       {
         name: "dJ/db tangent",

@@ -22,6 +22,7 @@ function guideReadJson(key, fallback) {
 }
 
 function guideGlobalEnabled() {
+  if (typeof isExperimentTestActive === "function" && isExperimentTestActive()) return false;
   if (typeof viewStateStore[GUIDE_GLOBAL_KEY] === "boolean") {
     return viewStateStore[GUIDE_GLOBAL_KEY];
   }
@@ -72,6 +73,13 @@ function currentGuidePageId() {
 }
 
 function defaultGuideStepForPage(pageId = currentGuidePageId()) {
+  if (pageId === "train_process") return "process_feature";
+  if (pageId === "train_preprocess_effect") return "effect_feature";
+  if (pageId === "train_loss") return "loss_feature";
+  if (pageId === "train_optimization") return "optimization_feature";
+  if (pageId === "train_custom") return "custom_feature";
+  if (pageId === "evaluate_metrics") return "evaluate_fit";
+  if (pageId === "predict") return "predict_model";
   if (pageId === PREPROCESS_DETAIL_GUIDE_ID) return "detail_scale";
   if (pageId === PREPROCESS_RAW_VIZ_GUIDE_ID) return "raw_feature";
   if (pageId === PREPROCESS_STANDARDIZE_GUIDE_ID) return "standardize_feature";
@@ -224,6 +232,7 @@ function renderPreprocessLoadPanel() {
 }
 
 function guideSwitchPanelHtml() {
+  if (typeof isExperimentTestActive === "function" && isExperimentTestActive()) return "";
   const globalEnabled = guideGlobalEnabled();
   const pageState = guidePageState(currentGuidePageId());
   return `
@@ -311,7 +320,7 @@ function preprocessSavedFeature() {
 function preprocessSelectedFeatureFallback(features = currentDatasetMeta?.features || FEATURE_NAMES) {
   const saved = preprocessSavedFeature();
   if (saved && features.includes(saved)) return saved;
-  if (activePreprocessStep !== "raw_viz" && activePreprocessStep !== "standard_viz" && dataCache?.feature && features.includes(dataCache.feature)) {
+  if (!["raw_viz", "standardize", "standard_viz"].includes(activePreprocessStep) && dataCache?.feature && features.includes(dataCache.feature)) {
     return dataCache.feature;
   }
   return features[0] || DEFAULT_FEATURE;
@@ -543,6 +552,20 @@ function updateCurrentGuide() {
     updatePreprocessStandardizeGuide();
   } else if (currentPage === "preprocess" && activePreprocessStep === "standard_viz") {
     updatePreprocessStandardVizGuide();
+  } else if (currentPage === "train_eval" && activeTrainStep === "process" && typeof updateTrainProcessGuide === "function") {
+    updateTrainProcessGuide();
+  } else if (currentPage === "train_eval" && activeTrainStep === "preprocess_effect" && typeof updateTrainPreprocessEffectGuide === "function") {
+    updateTrainPreprocessEffectGuide();
+  } else if (currentPage === "train_eval" && activeTrainStep === "loss" && typeof scheduleTrainLossGuideUpdate === "function") {
+    scheduleTrainLossGuideUpdate(100);
+  } else if (currentPage === "train_eval" && activeTrainStep === "optimization" && typeof scheduleTrainOptimizationGuideUpdate === "function") {
+    scheduleTrainOptimizationGuideUpdate(100);
+  } else if (currentPage === "train_eval" && activeTrainStep === "custom" && typeof scheduleTrainCustomGuideUpdate === "function") {
+    scheduleTrainCustomGuideUpdate(100);
+  } else if (currentPage === "evaluate" && typeof scheduleEvaluateGuideUpdate === "function") {
+    scheduleEvaluateGuideUpdate(100);
+  } else if (currentPage === "predict" && typeof schedulePredictGuideUpdate === "function") {
+    schedulePredictGuideUpdate(100);
   } else {
     closePreprocessLoadGuide();
   }
@@ -559,7 +582,7 @@ function bindPreprocessLoadGuideRuntime() {
       setTimeout(updatePreprocessLoadGuide, 60);
       return;
     }
-    if (state.step === "test_close" && event.target.closest("[data-test-close]")) {
+    if (state.step === "test_modal" && event.target.closest("[data-test-close]")) {
       setGuidePageState({ step: "select_dataset" });
       setTimeout(updatePreprocessLoadGuide, 60);
       return;
@@ -657,7 +680,7 @@ function restoreDataFormState() {
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   if ($("dataFeature") && state.feature && features.includes(state.feature)) {
     $("dataFeature").value = state.feature;
-  } else if ($("dataFeature") && activePreprocessStep !== "raw_viz" && activePreprocessStep !== "standard_viz" && dataCache?.feature) {
+  } else if ($("dataFeature") && !["raw_viz", "standardize", "standard_viz"].includes(activePreprocessStep) && dataCache?.feature) {
     $("dataFeature").value = dataCache.feature;
   } else if ($("dataFeature")) {
     $("dataFeature").value = features[0] || DEFAULT_FEATURE;
@@ -724,13 +747,13 @@ function closePreprocessStandardVizGuide() {
 
 function preprocessLoadGuideSpec() {
   const state = guidePageState();
-  const step = state.step || "test_button";
+  const step = state.step === "test_close" ? "select_dataset" : (state.step || "test_button");
   if (step === "test_modal") {
     return {
       step,
       target: ".test-modal",
-      title: "先读题，不急着作答",
-      body: "这里展示的是当前步骤的测试题。先看清楚题目问什么，暂时不用提交答案。接下来回到实验界面，完成加载和观察后再回来作答。",
+      title: "先查看本页任务",
+      body: "这里展示的是当前步骤的观察问题和操作目标。先看清楚本页要关注什么，接下来回到实验界面完成加载和观察。",
       action: "我知道了",
     };
   }
@@ -739,7 +762,7 @@ function preprocessLoadGuideSpec() {
       step,
       target: "[data-test-close]",
       title: "回到实验界面操作",
-      body: "现在先关闭题目弹窗。关闭后不会丢失题目，你可以稍后再次点击“查看测试内容”回来作答。",
+      body: "现在先关闭任务弹窗。关闭后不会丢失内容，你可以稍后再次点击“查看测试内容”回来确认本页任务。",
       action: "",
     };
   }
@@ -791,8 +814,8 @@ function preprocessLoadGuideSpec() {
   return {
     step: "select_dataset",
     target: "[data-practice-test-open], [data-test-open]",
-    title: "先看本步要解决的问题",
-    body: "开始操作前，请点击右侧“查看测试内容”。你会看到这一小步需要回答的问题。带着问题去观察数据，后面的操作会更有目标。",
+    title: "先看本步要观察什么",
+    body: "开始操作前，请点击右侧“查看测试内容”。你会看到这一小步的观察问题和操作目标。带着问题去观察数据，后面的操作会更有目标。",
     action: "",
   };
 }
@@ -818,7 +841,7 @@ function renderPreprocessLoadGuide(spec, target) {
   const visualTarget = guideVisualTarget(target);
   visualTarget.classList.add("guide-highlight");
   if (spec.step === "review_result") visualTarget.classList.add("guide-highlight-large");
-  const useBackdrop = !["test_modal", "test_close", "code_drawer"].includes(spec.step);
+  const useBackdrop = !["test_modal", "code_drawer"].includes(spec.step);
   document.body.insertAdjacentHTML("beforeend", `
     ${useBackdrop ? `<div class="guide-backdrop" aria-hidden="true"></div>` : ""}
     <div class="guide-focus-ring" aria-hidden="true"></div>
@@ -858,9 +881,6 @@ function renderPreprocessLoadGuide(spec, target) {
     if (!next) return;
     const step = next.dataset.guideNext;
     if (step === "test_modal") {
-      setGuidePageState({ step: "test_close" });
-      updatePreprocessLoadGuide();
-    } else if (step === "test_close") {
       document.querySelector("[data-test-close]")?.click();
       setGuidePageState({ step: "select_dataset" });
       setTimeout(updatePreprocessLoadGuide, 60);
@@ -877,6 +897,7 @@ function renderPreprocessLoadGuide(spec, target) {
       if (pageToggle) pageToggle.checked = false;
       closePreprocessCodeDrawer();
       closePreprocessLoadGuide();
+      openCurrentPracticeTestAfterGuide?.();
     }
   });
 }
@@ -975,6 +996,7 @@ function renderPreprocessDetailGuide(spec, target) {
       const pageToggle = $("guidePageToggle");
       if (pageToggle) pageToggle.checked = false;
       closePreprocessDetailGuide();
+      openCurrentPracticeTestAfterGuide?.();
     }
   });
 }
@@ -1101,6 +1123,7 @@ function renderPreprocessRawVizGuide(spec, target) {
       const pageToggle = $("guidePageToggle");
       if (pageToggle) pageToggle.checked = false;
       closePreprocessRawVizGuide();
+      openCurrentPracticeTestAfterGuide?.();
     }
   });
 }
@@ -1219,6 +1242,7 @@ function renderPreprocessStandardizeGuide(spec, target) {
       const pageToggle = $("guidePageToggle");
       if (pageToggle) pageToggle.checked = false;
       closePreprocessStandardizeGuide();
+      openCurrentPracticeTestAfterGuide?.();
     }
   });
 }
@@ -1358,6 +1382,7 @@ function renderPreprocessStandardVizGuide(spec, target) {
       const pageToggle = $("guidePageToggle");
       if (pageToggle) pageToggle.checked = false;
       closePreprocessStandardVizGuide();
+      openCurrentPracticeTestAfterGuide?.();
     }
   });
 }

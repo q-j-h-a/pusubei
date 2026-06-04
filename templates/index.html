@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
@@ -6,14 +6,15 @@
   <title>简单线性回归教学实验</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/chart_renderers.js?v=20260601_chart_dynamic01"></script>
-  <script src="/static/js/control_renderers.js"></script>
-  <script src="/static/js/view_renderers.js"></script>
+  <script src="static/js/api.js?v=20260603_subpath01"></script>
+  <script src="static/js/chart_renderers.js?v=20260601_chart_dynamic02"></script>
+  <script src="static/js/control_renderers.js"></script>
+  <script src="static/js/view_renderers.js"></script>
   <style>
     :root {
       --bg: #f7f8fb;
@@ -2370,6 +2371,34 @@
       height: 100%;
       min-height: 0;
     }
+    .three-loss-surface {
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+    .three-loss-surface:active {
+      cursor: grabbing;
+    }
+    .three-loss-surface canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .three-loss-note {
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      border: 1px solid rgba(148, 163, 184, .38);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .82);
+      color: #334155;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      pointer-events: none;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+    }
     .chart-toolbar {
       padding: 10px 18px 0;
       display: flex;
@@ -3113,6 +3142,39 @@
       color: #475569;
       font-size: 13px;
     }
+    .test-step-action-card {
+      border-top: 1px solid rgba(148, 163, 184, .28);
+      padding-top: 8px;
+      margin-top: 8px;
+    }
+    .test-step-action-card > .test-answer-row {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .test-step-action-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .test-step-action-list span,
+    .test-step-action-empty {
+      border: 1px solid #dbeafe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .test-step-action-empty {
+      display: inline-block;
+      margin-top: 8px;
+      color: #64748b;
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
     .test-explain {
       margin-top: 10px;
       color: #334155;
@@ -3216,6 +3278,40 @@
       color: #172033;
       font-weight: 800;
       line-height: 1.5;
+    }
+    .test-option-readonly {
+      cursor: default;
+      user-select: text;
+    }
+    .test-option-selectable {
+      cursor: pointer;
+      transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    .test-option-selectable:hover {
+      border-color: #93c5fd;
+      background: #f8fbff;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, .08);
+    }
+    .test-option-selectable:has(.test-option-input:checked) {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .test-option-input {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin: 4px 0 0;
+      accent-color: #2563eb;
+    }
+    .test-option-marker {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin-top: 3px;
+      border: 1.5px solid #94a3b8;
+      border-radius: 999px;
+      background: #fff;
     }
     .test-feedback.correct {
       border-color: #bbf7d0;
@@ -3366,6 +3462,12 @@
       grid-template-columns: minmax(0, 1fr) 28px;
       align-items: center;
       gap: 8px;
+    }
+    .range-field + .range-field {
+      margin-top: 4px;
+    }
+    .range-field .range-control {
+      margin-top: 0;
     }
     .control-label + .range-control {
       margin-top: 0;
@@ -3650,6 +3752,34 @@
     .guide-combo-target.guide-highlight {
       z-index: 10001 !important;
       background: #fff;
+    }
+    .train-effect-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .train-loss-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .train-custom-effect-combo-target.guide-highlight,
+    .train-custom-param-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .predict-chart-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .button-grid.guide-highlight {
+      background: #fff;
+      border-radius: 10px;
+    }
+    .range-field.guide-highlight {
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-left: -10px;
+      margin-right: -10px;
     }
     .guide-select-wrap select.guide-highlight {
       animation: guideSoftGlow 1.6s ease-in-out infinite;
@@ -4322,27 +4452,29 @@
 const FEATURE_NAMES = {{ feature_names | tojson }};
 const DEFAULT_FEATURE = {{ default_feature | tojson }};
 </script>
-<script src="/static/js/state_runtime.js?v=20260601_standard_viz_layout01"></script>
-<script src="/static/js/schema_registry.js?v=20260601_standard_viz01"></script>
-<script src="/static/js/experiment_runtime.js"></script>
-<script src="/static/js/theory_page_registry.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/basic.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/purpose.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/knowledge.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/dataset.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/model.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/criterion.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/optimization.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/evaluation.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/result.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/thinking.js?v=20260522_theory03"></script>
-<script src="/static/js/theory_page.js?v=20260529_pptx_fixed04"></script>
-<script src="/static/js/preprocess_page.js?v=20260601_standard_viz_guide04"></script>
-<script src="/static/js/predict_page.js?v=20260521_predict02"></script>
-<script src="/static/js/train_page.js?v=20260521_train24"></script>
-<script src="/static/js/evaluate_page.js?v=20260521_eval03"></script>
-<script src="/static/js/experiment_test.js?v=20260522_test01"></script>
-<script src="/static/js/app_shell.js"></script>
+<script src="static/js/state_runtime.js?v=20260601_standard_viz_layout01"></script>
+<script src="static/js/schema_registry.js?v=20260603_subpath01"></script>
+<script src="static/js/experiment_runtime.js"></script>
+<script src="static/js/three_loss_surface.js?v=20260601_three_loss03"></script>
+<script src="static/js/theory_page_registry.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/basic.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/purpose.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/knowledge.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/dataset.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/model.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/criterion.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/optimization.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/evaluation.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/result.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/thinking.js?v=20260522_theory03"></script>
+<script src="static/js/theory_page.js?v=20260603_subpath01"></script>
+<script src="static/js/preprocess_page.js?v=20260601_standard_viz_guide04"></script>
+<script src="static/js/predict_page.js?v=20260521_predict02"></script>
+<script src="static/js/train_page.js?v=20260601_train_loss_random01"></script>
+<script src="static/js/evaluate_page.js?v=20260521_eval03"></script>
+<script src="static/js/experiment_test.js?v=20260522_test01"></script>
+<script src="static/js/app_shell.js"></script>
 </body>
 </html>
+
 
