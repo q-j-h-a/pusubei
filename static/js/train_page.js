@@ -9,6 +9,8 @@ let trainLossViewsKey = "";
 let trainOptimizationViewsKey = "";
 let trainCustomViewsKey = "";
 
+const TRAIN_DEFAULT_FEATURE = "CRIM";
+
 const TRAIN_STEPS = [
   { id: "process", no: "01", views: ["model_train", "learning"] },
   { id: "preprocess_effect", no: "02", views: ["raw_scatter", "standard_scatter"] },
@@ -18,12 +20,14 @@ const TRAIN_STEPS = [
 ];
 
 const TRAIN_STEP_DEFAULTS = {
-  process: { trainStd: "true", trainFeature: DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "200", speed: "90" },
-  preprocess_effect: { trainStd: "true", trainFeature: DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "100", speed: "90" },
-  loss: { trainStd: "true", trainFeature: DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "120" },
-  optimization: { trainStd: "true", trainFeature: DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "160", speed: "120" },
-  custom: { trainStd: "true", trainFeature: DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "90" },
+  process: { trainStd: "true", trainFeature: TRAIN_DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "90" },
+  preprocess_effect: { trainStd: "true", trainFeature: TRAIN_DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "90" },
+  loss: { trainStd: "true", trainFeature: TRAIN_DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "120" },
+  optimization: { trainStd: "true", trainFeature: TRAIN_DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "120" },
+  custom: { trainStd: "true", trainFeature: TRAIN_DEFAULT_FEATURE, w0: "0", b0: "0", lr: "0.030", epochs: "120", speed: "90" },
 };
+
+const TRAIN_FORM_IDS = ["trainFeature", "trainStd", "w0", "b0", "lr", "epochs", "speed"];
 
 const TRAIN_COMPARE_VIEWS = [
   { id: "raw_scatter", label: "\u539f\u59cb\u6563\u70b9\u56fe", mode: "raw" },
@@ -46,6 +50,37 @@ const TRAIN_OPT_SLICE_MODES = [
   { id: "b", label: "\u56fa\u5b9a w\uff0c\u770b b" },
   { id: "neg_grad", label: "\u6cbf\u8d1f\u68af\u5ea6\u65b9\u5411" },
 ];
+
+const TRAIN_PROCESS_GUIDE_ID = "train_process";
+const TRAIN_PREPROCESS_EFFECT_GUIDE_ID = "train_preprocess_effect";
+const TRAIN_LOSS_GUIDE_ID = "train_loss";
+const TRAIN_OPTIMIZATION_GUIDE_ID = "train_optimization";
+const TRAIN_CUSTOM_GUIDE_ID = "train_custom";
+const TRAIN_LOSS_GUIDE_STEPS = new Set([
+  "loss_feature",
+  "loss_random10",
+  "loss_residual_chart",
+  "loss_overall",
+  "loss_hist",
+  "loss_step",
+  "loss_after_step_charts",
+]);
+const TRAIN_OPTIMIZATION_GUIDE_STEPS = new Set([
+  "optimization_feature",
+  "optimization_params",
+  "optimization_step",
+  "optimization_surface",
+  "optimization_contour",
+  "optimization_loss",
+]);
+const TRAIN_CUSTOM_GUIDE_STEPS = new Set([
+  "custom_feature",
+  "custom_params",
+  "custom_step",
+  "custom_scatter_loss",
+  "custom_param_paths",
+  "custom_calc",
+]);
 
 function ensureTrainTopFlow() {
   const slot = $("pageTopSlot");
@@ -102,12 +137,31 @@ function bindTrainFlow() {
     const btn = event.target.closest("[data-train-step]");
     if (!btn || !flow.contains(btn)) return;
     stopAuto();
+    persistTrainFormState();
     const previousStep = activeTrainStep;
     activeTrainStep = btn.dataset.trainStep;
     if (activeTrainStep === "preprocess_effect" && previousStep !== activeTrainStep) {
       ensureTrainCompareState();
       trainCompareViewsKey = "";
       trainCompareEntered = true;
+    }
+    if (activeTrainStep === "loss" && previousStep !== activeTrainStep) {
+      const lossGuideState = guidePageState(TRAIN_LOSS_GUIDE_ID);
+      if (guideGlobalEnabled() && lossGuideState.enabled && !lossGuideState.completed && !lossGuideState.dismissed) {
+        ensureTrainLossGuideStep();
+      }
+    }
+    if (activeTrainStep === "optimization" && previousStep !== activeTrainStep) {
+      const optimizationGuideState = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+      if (guideGlobalEnabled() && optimizationGuideState.enabled && !optimizationGuideState.completed && !optimizationGuideState.dismissed) {
+        ensureTrainOptimizationGuideStep();
+      }
+    }
+    if (activeTrainStep === "custom" && previousStep !== activeTrainStep) {
+      const customGuideState = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+      if (guideGlobalEnabled() && customGuideState.enabled && !customGuideState.completed && !customGuideState.dismissed) {
+        ensureTrainCustomGuideStep();
+      }
     }
     viewStateStore.activeTrainStepV1 = activeTrainStep;
     markTrainProgress(activeTrainStep);
@@ -117,6 +171,23 @@ function bindTrainFlow() {
 
 function trainStepDefaults() {
   return { ...TRAIN_STEP_DEFAULTS.process, ...(TRAIN_STEP_DEFAULTS[activeTrainStep] || {}) };
+}
+
+function trainFormStatesByStep() {
+  if (!viewStateStore.trainFormStateByStepV1 || typeof viewStateStore.trainFormStateByStepV1 !== "object") {
+    viewStateStore.trainFormStateByStepV1 = {};
+  }
+  return viewStateStore.trainFormStateByStepV1;
+}
+
+function trainFormStateForStep(stepId = activeTrainStep) {
+  const states = trainFormStatesByStep();
+  if (states[stepId] && typeof states[stepId] === "object") return states[stepId];
+  return {};
+}
+
+function setTrainFormStateForStep(stepId, state) {
+  trainFormStatesByStep()[stepId] = state;
 }
 
 function trainStepViews() {
@@ -163,6 +234,29 @@ function setTrainLossSampleIndex(index) {
   return next;
 }
 
+function applyFixedZeroAxis(option, range) {
+  if (!range) return option;
+  return {
+    ...option,
+    xAxis: axisOptionWithRange(option.xAxis, range.x),
+    yAxis: axisOptionWithRange(option.yAxis, range.y),
+  };
+}
+
+function trainSetChartOption(ch, _chartKey, option, replace = true) {
+  if (!option) return;
+  ch.setOption(option, replace);
+}
+
+function renderActiveTrainFrame() {
+  if (activeTrainStep === "preprocess_effect") renderTrainCompareFrame(currentFrame);
+  else if (activeTrainStep === "process") renderTrainProcessFrame(currentFrame);
+  else if (activeTrainStep === "loss") renderTrainLossFrame(currentFrame);
+  else if (activeTrainStep === "optimization") renderTrainOptimizationFrame(currentFrame);
+  else if (activeTrainStep === "custom") renderTrainCustomFrame(currentFrame);
+  else renderTrainFrame(currentFrame);
+}
+
 function setTrainCheckedViews(views) {
   const allowed = new Set(views);
   document.querySelectorAll('input[name="trainViews"]').forEach(el => {
@@ -174,6 +268,1180 @@ function selectedTrainCompareViews() {
   if (activeTrainStep === "preprocess_effect") return TRAIN_COMPARE_VIEWS.map(item => item.id);
   const values = selectedValues("trainCompareViews");
   return values;
+}
+
+function guideEnabledForTrainProcess() {
+  const state = guidePageState(TRAIN_PROCESS_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function guideEnabledForTrainPreprocessEffect() {
+  const state = guidePageState(TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function guideEnabledForTrainLoss() {
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function guideEnabledForTrainOptimization() {
+  const state = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function guideEnabledForTrainCustom() {
+  const state = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function ensureTrainLossGuideStep() {
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  if (!TRAIN_LOSS_GUIDE_STEPS.has(state.step)) {
+    setGuidePageState({ step: "loss_feature" }, TRAIN_LOSS_GUIDE_ID);
+  }
+}
+
+function ensureTrainOptimizationGuideStep() {
+  const state = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+  if (!TRAIN_OPTIMIZATION_GUIDE_STEPS.has(state.step)) {
+    setGuidePageState({ step: "optimization_feature" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+  }
+}
+
+function ensureTrainCustomGuideStep() {
+  const state = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+  if (!TRAIN_CUSTOM_GUIDE_STEPS.has(state.step)) {
+    setGuidePageState({ step: "custom_feature" }, TRAIN_CUSTOM_GUIDE_ID);
+  }
+}
+
+function trainProcessGuideSpec() {
+  const state = guidePageState(TRAIN_PROCESS_GUIDE_ID);
+  const step = state.step || "process_feature";
+  if (step === "process_params") {
+    return {
+      step,
+      target: ".train-process-params-guide-target",
+      title: "\u8c03\u8282\u8bad\u7ec3\u53c2\u6570",
+      body: "w 和 b 决定当前回归线的位置；学习率决定每次参数更新的步长；周期数决定最多训练多少轮；动画速度只影响演示播放快慢。可以先保留默认值，再观察训练过程。",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "process_actions") {
+    return {
+      step,
+      target: ".train-process-actions-guide-target",
+      title: "\u63a7\u5236\u8bad\u7ec3\u8fc7\u7a0b",
+      body: "你可以先点击“单步训练”，观察一次参数更新后红色回归线如何变化；也可以点击“自动演示”连续播放训练过程。“暂停”用于停止播放，“重置”会回到初始参数。",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "process_chart") {
+    return {
+      step,
+      target: '[data-chart-card="process_standard_scatter"]',
+      title: "\u89c2\u5bdf\u56de\u5f52\u7ebf\u53d8\u5316",
+      body: "散点表示样本点，红色线是当前回归线，绿色虚线是最优参考线。训练时样本点不会改变，变化的是模型参数 w、b 和红色回归线。可以逐步训练，观察红线如何靠近参考线。",
+      action: "\u5b8c\u6210\u672c\u6b65\u5f15\u5bfc",
+    };
+  }
+  return {
+    step: "process_feature",
+    target: ".train-process-feature-guide-target",
+    title: "\u9009\u62e9\u8bad\u7ec3\u7279\u5f81",
+    body: "这里选择当前用于训练的一维输入特征。切换特征后，中间散点图的横轴会随之变化，模型会用该特征去拟合目标值 MEDV。",
+    action: "\u4e0b\u4e00\u6b65",
+  };
+}
+
+function updateTrainProcessGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "train_eval" || activeTrainStep !== "process" || !guideEnabledForTrainProcess()) {
+      closeTrainProcessGuide();
+      return;
+    }
+    const spec = trainProcessGuideSpec();
+    const target = document.querySelector(spec.target);
+    if (!target) {
+      closeTrainProcessGuide();
+      return;
+    }
+    renderTrainProcessGuide(spec, target);
+  });
+}
+
+function renderTrainProcessGuide(spec, target) {
+  closeTrainProcessGuide();
+  const visualTarget = target;
+  scrollTrainGuideTargetIntoView(visualTarget);
+  visualTarget.classList.add("guide-highlight");
+  if (spec.step !== "process_feature") visualTarget.classList.add("guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" role="dialog" aria-live="polite" aria-label="熟悉回归过程引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        <button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  const isLargeTarget = spec.step !== "process_feature";
+  positionGuideFocusRing(visualTarget, isLargeTarget);
+  positionGuidePopover(visualTarget);
+  requestAnimationFrame(() => {
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  });
+  setTimeout(() => {
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "process_feature" }, TRAIN_PROCESS_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainProcessGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "process_feature") {
+      setGuidePageState({ step: "process_params" }, TRAIN_PROCESS_GUIDE_ID);
+      updateTrainProcessGuide();
+    } else if (step === "process_params") {
+      setGuidePageState({ step: "process_actions" }, TRAIN_PROCESS_GUIDE_ID);
+      updateTrainProcessGuide();
+    } else if (step === "process_actions") {
+      setGuidePageState({ step: "process_chart" }, TRAIN_PROCESS_GUIDE_ID);
+      updateTrainProcessGuide();
+    } else if (step === "process_chart") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "process_feature" }, TRAIN_PROCESS_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainProcessGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function scrollTrainGuideTargetIntoView(target) {
+  if (!target) return;
+  const container = target.closest(".assistant") || target.closest("#main") || $("main");
+  if (!container) {
+    target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+    return;
+  }
+  target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+  const rect = target.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  const padding = 24;
+  const availableHeight = containerRect.height - padding * 2;
+  const targetTop = rect.height <= availableHeight
+    ? containerRect.top + padding + (availableHeight - rect.height) / 2
+    : containerRect.top + padding;
+  container.scrollTop += rect.top - targetTop;
+}
+
+function closeTrainProcessGuide() {
+  closePreprocessLoadGuide();
+}
+
+function trainPreprocessEffectGuideSpec() {
+  const state = guidePageState(TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+  const step = state.step || "effect_feature";
+  if (step === "effect_first_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "\u5148\u5355\u6b65\u89c2\u5bdf",
+      body: "请先点击“单步训练”。每点击一次，模型都会完成一轮参数更新。这样可以更清楚地观察原始尺度和标准化尺度下，红色当前回归线的移动差异。",
+      action: "",
+    };
+  }
+  if (step === "effect_compare_chart") {
+    return {
+      step,
+      target: ".train-effect-combo-target",
+      title: "\u5bf9\u6bd4\u4e24\u79cd\u5c3a\u5ea6\u4e0b\u7684\u56de\u5f52\u7ebf",
+      body: "请同时观察两张图。左侧是原始特征尺度，右侧是标准化尺度。样本对应关系不变，但坐标尺度不同，因此相同学习率下，红色当前回归线的移动速度和稳定性可能明显不同。",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "effect_lr") {
+    return {
+      step,
+      target: ".range-lr-guide-target",
+      title: "\u8bbe\u7f6e\u5b66\u4e60\u7387",
+      body: "现在把学习率设置为 0.003。学习率决定每次参数更新的步长；数据点不会改变，改变的是模型参数更新的幅度。",
+      action: "\u8bbe\u7f6e\u4e3a 0.003",
+    };
+  }
+  if (step === "effect_second_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "\u518d\u6b21\u5355\u6b65\u8bad\u7ec3",
+      body: "现在再次点击“单步训练”。注意比较左右两张图中红色回归线的变化：原始尺度可能因为数值范围较大而更新更剧烈，标准化尺度通常更平稳。",
+      action: "",
+    };
+  }
+  if (step === "effect_result_chart") {
+    return {
+      step,
+      target: ".train-effect-combo-target",
+      title: "\u89c2\u5bdf\u5b66\u4e60\u7387\u5e26\u6765\u7684\u8bad\u7ec3\u5dee\u5f02",
+      body: "相同学习率作用在不同数据尺度上，参数更新的表现会不同。标准化不会改变样本之间的相对关系，但会让训练过程更容易控制。",
+      action: "\u5b8c\u6210\u672c\u6b65\u5f15\u5bfc",
+    };
+  }
+  return {
+    step: "effect_feature",
+    target: ".train-effect-feature-guide-target",
+    title: "\u9009\u62e9\u5bf9\u6bd4\u7279\u5f81",
+    body: "这里选择要对比的输入特征。左侧原始散点图和右侧标准化散点图都会围绕这个特征更新，便于观察同一特征在不同尺度下的训练表现。",
+    action: "\u4e0b\u4e00\u6b65",
+  };
+}
+
+function updateTrainPreprocessEffectGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "train_eval" || activeTrainStep !== "preprocess_effect" || !guideEnabledForTrainPreprocessEffect()) {
+      closeTrainPreprocessEffectGuide();
+      return;
+    }
+    const spec = trainPreprocessEffectGuideSpec();
+    const target = spec.step === "effect_compare_chart" || spec.step === "effect_result_chart"
+      ? createTrainEffectComboTarget()
+      : document.querySelector(spec.target);
+    if (!target) {
+      closeTrainPreprocessEffectGuide();
+      return;
+    }
+    renderTrainPreprocessEffectGuide(spec, target);
+  });
+}
+
+function renderTrainPreprocessEffectGuide(spec, target) {
+  closeTrainPreprocessEffectGuide();
+  const visualTarget = spec.step === "effect_compare_chart" || spec.step === "effect_result_chart"
+    ? createTrainEffectComboTarget()
+    : target;
+  if (!visualTarget) return;
+  if (spec.step === "effect_compare_chart" || spec.step === "effect_result_chart") {
+    scrollTrainEffectChartsIntoView();
+    highlightTrainEffectChartCards();
+  } else {
+    scrollTrainGuideTargetIntoView(visualTarget);
+  }
+  visualTarget.classList.add("guide-highlight");
+  if (spec.step !== "effect_feature" && spec.step !== "effect_first_step" && spec.step !== "effect_second_step") {
+    visualTarget.classList.add("guide-highlight-large");
+  }
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" role="dialog" aria-live="polite" aria-label="熟悉预处理影响引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        ${spec.action ? `<button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>` : ""}
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  const isLargeTarget = spec.step !== "effect_feature" && spec.step !== "effect_first_step" && spec.step !== "effect_second_step";
+  positionGuideFocusRing(visualTarget, isLargeTarget);
+  positionGuidePopover(visualTarget);
+  requestAnimationFrame(() => {
+    if (spec.step === "effect_compare_chart" || spec.step === "effect_result_chart") syncTrainEffectComboTarget(visualTarget);
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  });
+  setTimeout(() => {
+    if (spec.step === "effect_compare_chart" || spec.step === "effect_result_chart") syncTrainEffectComboTarget(visualTarget);
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", async event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "effect_feature" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainPreprocessEffectGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "effect_feature") {
+      setGuidePageState({ step: "effect_first_step" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+      updateTrainPreprocessEffectGuide();
+    } else if (step === "effect_compare_chart") {
+      setGuidePageState({ step: "effect_lr" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+      updateTrainPreprocessEffectGuide();
+    } else if (step === "effect_lr") {
+      setGuidePageState({ step: "effect_second_step" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+      await setTrainLearningRateExact("0.003");
+      updateTrainPreprocessEffectGuide();
+    } else if (step === "effect_result_chart") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "effect_feature" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainPreprocessEffectGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function createTrainEffectComboTarget() {
+  const raw = document.querySelector('[data-chart-card="raw_scatter"]');
+  const standard = document.querySelector('[data-chart-card="standard_scatter"]');
+  if (!raw || !standard) return null;
+  let target = document.querySelector(".train-effect-combo-target");
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "train-effect-combo-target";
+    document.body.appendChild(target);
+  }
+  syncTrainEffectComboTarget(target);
+  return target;
+}
+
+function syncTrainEffectComboTarget(target) {
+  const raw = document.querySelector('[data-chart-card="raw_scatter"]');
+  const standard = document.querySelector('[data-chart-card="standard_scatter"]');
+  if (!target || !raw || !standard) return;
+  const rawRect = raw.getBoundingClientRect();
+  const stdRect = standard.getBoundingClientRect();
+  const left = Math.min(rawRect.left, stdRect.left);
+  const top = Math.min(rawRect.top, stdRect.top);
+  const right = Math.max(rawRect.right, stdRect.right);
+  const bottom = Math.max(rawRect.bottom, stdRect.bottom);
+  target.style.position = "fixed";
+  target.style.left = `${left}px`;
+  target.style.top = `${top}px`;
+  target.style.width = `${right - left}px`;
+  target.style.height = `${bottom - top}px`;
+  target.style.pointerEvents = "none";
+  target.style.borderRadius = "14px";
+}
+
+function highlightTrainEffectChartCards() {
+  ["raw_scatter", "standard_scatter"].forEach(view => {
+    const card = document.querySelector(`[data-chart-card="${view}"]`);
+    const item = card?.closest(".grid-stack-item");
+    item?.classList.add("guide-lift");
+    card?.classList.add("guide-highlight", "guide-highlight-large");
+  });
+}
+
+function scrollTrainEffectChartsIntoView() {
+  const raw = document.querySelector('[data-chart-card="raw_scatter"]');
+  const standard = document.querySelector('[data-chart-card="standard_scatter"]');
+  const main = $("main");
+  if (!raw || !standard || !main) return;
+  const rawRect = raw.getBoundingClientRect();
+  const stdRect = standard.getBoundingClientRect();
+  const mainRect = main.getBoundingClientRect();
+  const top = Math.min(rawRect.top, stdRect.top);
+  const bottom = Math.max(rawRect.bottom, stdRect.bottom);
+  const targetHeight = bottom - top;
+  const padding = 24;
+  const availableHeight = mainRect.height - padding * 2;
+  const targetTop = targetHeight <= availableHeight
+    ? mainRect.top + padding + (availableHeight - targetHeight) / 2
+    : mainRect.top + padding;
+  main.scrollTop += top - targetTop;
+}
+
+function closeTrainPreprocessEffectGuide() {
+  closePreprocessLoadGuide();
+  document.querySelector(".train-effect-combo-target")?.remove();
+}
+
+function createTrainLossComboTarget() {
+  const residual = document.querySelector('[data-chart-card="loss_residual_main"]');
+  const overall = document.querySelector('[data-chart-card="loss_overall"]');
+  if (!residual || !overall) return null;
+  let target = document.querySelector(".train-loss-combo-target");
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "train-loss-combo-target";
+    document.body.appendChild(target);
+  }
+  syncTrainLossComboTarget(target);
+  return target;
+}
+
+function syncTrainLossComboTarget(target) {
+  const residual = document.querySelector('[data-chart-card="loss_residual_main"]');
+  const overall = document.querySelector('[data-chart-card="loss_overall"]');
+  if (!target || !residual || !overall) return;
+  const residualRect = residual.getBoundingClientRect();
+  const overallRect = overall.getBoundingClientRect();
+  const left = Math.min(residualRect.left, overallRect.left);
+  const top = Math.min(residualRect.top, overallRect.top);
+  const right = Math.max(residualRect.right, overallRect.right);
+  const bottom = Math.max(residualRect.bottom, overallRect.bottom);
+  target.style.position = "fixed";
+  target.style.left = `${left}px`;
+  target.style.top = `${top}px`;
+  target.style.width = `${right - left}px`;
+  target.style.height = `${bottom - top}px`;
+  target.style.pointerEvents = "none";
+  target.style.borderRadius = "14px";
+}
+
+function highlightTrainLossChartCards() {
+  ["loss_residual_main", "loss_overall"].forEach(view => {
+    const card = document.querySelector(`[data-chart-card="${view}"]`);
+    const item = card?.closest(".grid-stack-item");
+    item?.classList.add("guide-lift");
+    card?.classList.add("guide-highlight", "guide-highlight-large");
+  });
+}
+
+function scrollTrainLossChartsIntoView() {
+  const residual = document.querySelector('[data-chart-card="loss_residual_main"]');
+  const overall = document.querySelector('[data-chart-card="loss_overall"]');
+  const main = $("main");
+  if (!residual || !overall || !main) return;
+  const residualRect = residual.getBoundingClientRect();
+  const overallRect = overall.getBoundingClientRect();
+  const mainRect = main.getBoundingClientRect();
+  const top = Math.min(residualRect.top, overallRect.top);
+  const bottom = Math.max(residualRect.bottom, overallRect.bottom);
+  const targetHeight = bottom - top;
+  const padding = 24;
+  const availableHeight = mainRect.height - padding * 2;
+  const targetTop = targetHeight <= availableHeight
+    ? mainRect.top + padding + (availableHeight - targetHeight) / 2
+    : mainRect.top + padding;
+  main.scrollTop += top - targetTop;
+}
+
+function trainLossGuideSpec() {
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  const step = state.step || "loss_feature";
+  if (step === "loss_random10") {
+    return {
+      step,
+      target: '[data-loss-residual-mode="random10"]',
+      title: "\u67e5\u770b\u968f\u673a 10 \u4e2a\u6837\u672c\u6b8b\u5dee",
+      body: "璇风偣鍑烩€滈殢鏈?10 涓牱鏈残宸€濄€傚涓牱鏈殑绾㈣壊娈嬪樊绾胯兘璁╀綘鐪嬪埌锛岄娴嬭宸笉鏄崟涓偣鐨勭幇璞★紝鑰屾槸鏁翠釜鏁版嵁闆嗛兘浼氫骇鐢熺殑璁粌淇″彿銆?",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_overall") {
+    return {
+      step,
+      target: '[data-chart-card="loss_overall"]',
+      title: "\u67e5\u770b\u6574\u4f53\u8bef\u5dee\u5206\u5e03",
+      body: "杩欓噷浠庡崟涓垨灏戦噺鏍锋湰鐨勬残宸墿灞曞埌鎵€鏈夋牱鏈殑璇樊銆侻SE \u4f1a\u628a\u6240\u6709\u6837\u672c\u7684\u9884\u6d4b\u8bef\u5dee\u5e73\u65b9\u540e\u6c42\u5e73\u5747\uff0c\u56e0\u6b64\u5b83\u8861\u91cf\u7684\u662f\u6574\u4f53\u8bef\u5dee\u6c34\u5e73\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_residual_chart") {
+    return {
+      step,
+      target: '[data-chart-card="loss_residual_main"]',
+      title: "\u89c2\u5bdf\u968f\u673a\u6837\u672c\u7684\u6b8b\u5dee",
+      body: "\u73b0\u5728\u5148\u770b\u5de6\u4fa7\u56fe\u3002\u9ec4\u8272\u70b9\u662f\u88ab\u968f\u673a\u9009\u4e2d\u7684\u6837\u672c\uff0c\u7ea2\u8272\u7ad6\u7ebf\u8868\u793a\u771f\u5b9e\u503c\u548c\u9884\u6d4b\u503c\u4e4b\u95f4\u7684\u6b8b\u5dee\u3002\u7ebf\u6bb5\u8d8a\u957f\uff0c\u8fd9\u4e2a\u6837\u672c\u7684\u9884\u6d4b\u8bef\u5dee\u8d8a\u5927\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_hist") {
+    return {
+      step,
+      target: '[data-chart-card="loss_overall"]',
+      title: "\u89c2\u5bdf\u6b8b\u5dee\u76f4\u65b9\u56fe",
+      body: "\u76f4\u65b9\u56fe\u628a\u6b8b\u5dee\u6309\u533a\u95f4\u7edf\u8ba1\uff0c\u53ef\u4ee5\u770b\u51fa\u591a\u6570\u9884\u6d4b\u8bef\u5dee\u662f\u5426\u96c6\u4e2d\u5728 0 \u9644\u8fd1\uff0c\u4ee5\u53ca\u662f\u5426\u5b58\u5728\u8f83\u5927\u7684\u5f02\u5e38\u8bef\u5dee\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "\u5355\u6b65\u8bad\u7ec3\u89c2\u5bdf Loss",
+      body: "\u73b0\u5728\u70b9\u51fb\u201c\u5355\u6b65\u8bad\u7ec3\u201d\u3002\u6a21\u578b\u53c2\u6570\u66f4\u65b0\u4e00\u8f6e\u540e\uff0c\u6b8b\u5dee\u3001MSE \u548c\u76f4\u65b9\u56fe\u90fd\u4f1a\u968f\u4e4b\u53d8\u5316\uff0c\u8bf7\u89c2\u5bdf\u8bad\u7ec3\u5982\u4f55\u9010\u6b65\u51cf\u5c0f\u6574\u4f53\u8bef\u5dee\u3002",
+      action: "",
+    };
+  }
+  if (step === "loss_after_step_charts") {
+    return {
+      step,
+      target: ".train-loss-combo-target",
+      title: "\u89c2\u5bdf\u8bad\u7ec3\u540e\u7684\u56fe\u8868\u53d8\u5316",
+      body: "\u8bf7\u540c\u65f6\u89c2\u5bdf\u5de6\u4fa7\u6b8b\u5dee\u4e0e\u56de\u5f52\u7ebf\u3001\u53f3\u4fa7\u6574\u4f53\u8bef\u5dee\u5206\u5e03\u6216\u6b8b\u5dee\u76f4\u65b9\u56fe\u3002\u5355\u6b65\u8bad\u7ec3\u540e\uff0c\u5f53\u524d\u56de\u5f52\u7ebf\u3001\u6b8b\u5dee\u7ebf\u3001MSE \u548c\u8bef\u5dee\u5206\u5e03\u90fd\u53ef\u80fd\u53d1\u751f\u53d8\u5316\u3002",
+      action: "\u5b8c\u6210\u672c\u6b65\u5f15\u5bfc",
+    };
+  }
+  return {
+    step: "loss_feature",
+    target: ".train-loss-feature-guide-target",
+    title: "\u9009\u62e9\u8bad\u7ec3\u7279\u5f81",
+    body: "\u8fd9\u91cc\u9009\u62e9\u7528\u6765\u8bad\u7ec3\u7b80\u5355\u7ebf\u6027\u56de\u5f52\u7684\u8f93\u5165\u7279\u5f81\u3002\u7279\u5f81\u4f1a\u5f71\u54cd\u56de\u5f52\u7ebf\u3001\u6bcf\u4e2a\u6837\u672c\u7684\u9884\u6d4b\u503c\uff0c\u4e5f\u4f1a\u8fdb\u4e00\u6b65\u5f71\u54cd\u6b8b\u5dee\u548c MSE Loss\u3002",
+    action: "\u4e0b\u4e00\u6b65",
+  };
+}
+
+function trainLossGuideSpecClean() {
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  const step = state.step || "loss_feature";
+  if (step === "loss_random10") {
+    return {
+      step,
+      target: '[data-loss-residual-mode="random10"]',
+      title: "\u67e5\u770b\u968f\u673a 10 \u4e2a\u6837\u672c\u6b8b\u5dee",
+      body: "\u8bf7\u70b9\u51fb\u201c\u968f\u673a 10 \u4e2a\u6837\u672c\u201d\u3002\u591a\u4e2a\u6837\u672c\u7684\u7ea2\u8272\u6b8b\u5dee\u7ebf\u80fd\u8ba9\u4f60\u770b\u5230\uff0c\u9884\u6d4b\u8bef\u5dee\u4e0d\u662f\u5355\u4e2a\u70b9\u7684\u73b0\u8c61\uff0c\u800c\u662f\u6574\u4e2a\u6570\u636e\u96c6\u90fd\u4f1a\u4ea7\u751f\u7684\u8bad\u7ec3\u4fe1\u53f7\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_overall") {
+    return {
+      step,
+      target: '[data-chart-card="loss_overall"]',
+      title: "\u67e5\u770b\u6574\u4f53\u8bef\u5dee\u5206\u5e03",
+      body: "\u8fd9\u91cc\u4ece\u5355\u4e2a\u6216\u5c11\u91cf\u6837\u672c\u7684\u6b8b\u5dee\u6269\u5c55\u5230\u6240\u6709\u6837\u672c\u7684\u8bef\u5dee\u3002MSE \u4f1a\u628a\u6240\u6709\u6837\u672c\u7684\u9884\u6d4b\u8bef\u5dee\u5e73\u65b9\u540e\u6c42\u5e73\u5747\uff0c\u56e0\u6b64\u5b83\u8861\u91cf\u7684\u662f\u6574\u4f53\u8bef\u5dee\u6c34\u5e73\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_residual_chart") {
+    return {
+      step,
+      target: '[data-chart-card="loss_residual_main"]',
+      title: "\u89c2\u5bdf\u968f\u673a\u6837\u672c\u7684\u6b8b\u5dee",
+      body: "\u73b0\u5728\u5148\u770b\u5de6\u4fa7\u56fe\u3002\u9ec4\u8272\u70b9\u662f\u88ab\u968f\u673a\u9009\u4e2d\u7684\u6837\u672c\uff0c\u7ea2\u8272\u7ad6\u7ebf\u8868\u793a\u771f\u5b9e\u503c\u548c\u9884\u6d4b\u503c\u4e4b\u95f4\u7684\u6b8b\u5dee\u3002\u7ebf\u6bb5\u8d8a\u957f\uff0c\u8fd9\u4e2a\u6837\u672c\u7684\u9884\u6d4b\u8bef\u5dee\u8d8a\u5927\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_hist") {
+    return {
+      step,
+      target: '[data-chart-card="loss_overall"]',
+      title: "\u89c2\u5bdf\u6b8b\u5dee\u76f4\u65b9\u56fe",
+      body: "\u76f4\u65b9\u56fe\u628a\u6b8b\u5dee\u6309\u533a\u95f4\u7edf\u8ba1\uff0c\u53ef\u4ee5\u770b\u51fa\u591a\u6570\u9884\u6d4b\u8bef\u5dee\u662f\u5426\u96c6\u4e2d\u5728 0 \u9644\u8fd1\uff0c\u4ee5\u53ca\u662f\u5426\u5b58\u5728\u8f83\u5927\u7684\u5f02\u5e38\u8bef\u5dee\u3002",
+      action: "\u4e0b\u4e00\u6b65",
+    };
+  }
+  if (step === "loss_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "\u5355\u6b65\u8bad\u7ec3\u89c2\u5bdf Loss",
+      body: "\u73b0\u5728\u70b9\u51fb\u201c\u5355\u6b65\u8bad\u7ec3\u201d\u3002\u6a21\u578b\u53c2\u6570\u66f4\u65b0\u4e00\u8f6e\u540e\uff0c\u6b8b\u5dee\u3001MSE \u548c\u76f4\u65b9\u56fe\u90fd\u4f1a\u968f\u4e4b\u53d8\u5316\uff0c\u8bf7\u89c2\u5bdf\u8bad\u7ec3\u5982\u4f55\u9010\u6b65\u51cf\u5c0f\u6574\u4f53\u8bef\u5dee\u3002",
+      action: "",
+    };
+  }
+  if (step === "loss_after_step_charts") {
+    return {
+      step,
+      target: ".train-loss-combo-target",
+      title: "\u89c2\u5bdf\u8bad\u7ec3\u540e\u7684\u56fe\u8868\u53d8\u5316",
+      body: "\u8bf7\u540c\u65f6\u89c2\u5bdf\u5de6\u4fa7\u6b8b\u5dee\u4e0e\u56de\u5f52\u7ebf\u3001\u53f3\u4fa7\u6574\u4f53\u8bef\u5dee\u5206\u5e03\u6216\u6b8b\u5dee\u76f4\u65b9\u56fe\u3002\u5355\u6b65\u8bad\u7ec3\u540e\uff0c\u5f53\u524d\u56de\u5f52\u7ebf\u3001\u6b8b\u5dee\u7ebf\u3001MSE \u548c\u8bef\u5dee\u5206\u5e03\u90fd\u53ef\u80fd\u53d1\u751f\u53d8\u5316\u3002",
+      action: "\u5b8c\u6210\u672c\u6b65\u5f15\u5bfc",
+    };
+  }
+  return {
+    step: "loss_feature",
+    target: ".train-loss-feature-guide-target",
+    title: "\u9009\u62e9\u8bad\u7ec3\u7279\u5f81",
+    body: "\u8fd9\u91cc\u9009\u62e9\u7528\u6765\u8bad\u7ec3\u7b80\u5355\u7ebf\u6027\u56de\u5f52\u7684\u8f93\u5165\u7279\u5f81\u3002\u7279\u5f81\u4f1a\u5f71\u54cd\u56de\u5f52\u7ebf\u3001\u6bcf\u4e2a\u6837\u672c\u7684\u9884\u6d4b\u503c\uff0c\u4e5f\u4f1a\u8fdb\u4e00\u6b65\u5f71\u54cd\u6b8b\u5dee\u548c MSE Loss\u3002",
+    action: "\u4e0b\u4e00\u6b65",
+  };
+}
+
+function updateTrainLossGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "train_eval" || activeTrainStep !== "loss" || !guideEnabledForTrainLoss()) {
+      closeTrainLossGuide();
+      return;
+    }
+    const spec = trainLossGuideSpecClean();
+    const target = spec.step === "loss_after_step_charts"
+      ? createTrainLossComboTarget()
+      : document.querySelector(spec.target);
+    if (!target) {
+      return;
+    }
+    const existing = document.querySelector(`.guide-popover[data-train-loss-guide-step="${escapeHtml(spec.step)}"]`);
+    if (existing && target.classList.contains("guide-highlight")) {
+      const isLargeTarget = spec.step === "loss_residual_chart" || spec.step === "loss_overall" || spec.step === "loss_hist";
+      positionGuideFocusRing(target, isLargeTarget);
+      positionGuidePopover(target);
+      return;
+    }
+    renderTrainLossGuide(spec, target);
+  });
+}
+
+function scheduleTrainLossGuideUpdate(delay = 120) {
+  clearTimeout(scheduleTrainLossGuideUpdate.timer);
+  scheduleTrainLossGuideUpdate.timer = setTimeout(() => {
+    updateTrainLossGuide();
+  }, delay);
+}
+
+function renderTrainLossGuide(spec, target) {
+  closeTrainLossGuide();
+  const visualTarget = spec.step === "loss_after_step_charts"
+    ? createTrainLossComboTarget()
+    : target;
+  if (!visualTarget) return;
+  if (spec.step === "loss_after_step_charts") {
+    scrollTrainLossChartsIntoView();
+    highlightTrainLossChartCards();
+  } else {
+    scrollTrainGuideTargetIntoView(visualTarget);
+  }
+  visualTarget.classList.add("guide-highlight");
+  if (spec.step === "loss_residual_chart" || spec.step === "loss_overall" || spec.step === "loss_hist" || spec.step === "loss_after_step_charts") visualTarget.classList.add("guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" data-train-loss-guide-step="${escapeHtml(spec.step)}" role="dialog" aria-live="polite" aria-label="\u719f\u6089\u635f\u5931\u51fd\u6570\u5f15\u5bfc">
+      <button class="guide-close" type="button" aria-label="\u5173\u95ed\u5f53\u524d\u9875\u9762\u5f15\u5bfc" data-guide-close="true">x</button>
+      <div class="guide-kicker">\u5b66\u4e60\u5f15\u5bfc</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        ${spec.action ? `<button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>` : ""}
+        <button class="secondary-btn" type="button" data-guide-close="true">\u5173\u95ed\u5f15\u5bfc</button>
+      </div>
+    </aside>`);
+
+  const isLargeTarget = spec.step === "loss_residual_chart" || spec.step === "loss_overall" || spec.step === "loss_hist" || spec.step === "loss_after_step_charts";
+  positionGuideFocusRing(visualTarget, isLargeTarget);
+  positionGuidePopover(visualTarget);
+  requestAnimationFrame(() => {
+    if (spec.step === "loss_after_step_charts") syncTrainLossComboTarget(visualTarget);
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  });
+  setTimeout(() => {
+    if (spec.step === "loss_after_step_charts") syncTrainLossComboTarget(visualTarget);
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "loss_feature" }, TRAIN_LOSS_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainLossGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "loss_feature") {
+      setGuidePageState({ step: "loss_random10" }, TRAIN_LOSS_GUIDE_ID);
+      updateTrainLossGuide();
+    } else if (step === "loss_random10") {
+      viewStateStore.trainLossResidualModeV1 = "random10";
+      resetTrainLossRandom10Indices();
+      trainLossViewsKey = "";
+      renderTrainLossFrame(currentFrame);
+      advanceTrainLossGuideOnRandom10Click();
+    } else if (step === "loss_residual_chart") {
+      setGuidePageState({ step: "loss_overall" }, TRAIN_LOSS_GUIDE_ID);
+      scheduleTrainLossGuideUpdate(80);
+    } else if (step === "loss_overall") {
+      viewStateStore.trainLossOverallViewV1 = "residual_hist";
+      trainLossViewsKey = "";
+      setGuidePageState({ step: "loss_hist" }, TRAIN_LOSS_GUIDE_ID);
+      renderTrainLossFrame(currentFrame);
+      scheduleTrainLossGuideUpdate(120);
+    } else if (step === "loss_hist") {
+      setGuidePageState({ step: "loss_step" }, TRAIN_LOSS_GUIDE_ID);
+      scheduleTrainLossGuideUpdate(80);
+    } else if (step === "loss_after_step_charts") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "loss_feature" }, TRAIN_LOSS_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainLossGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function closeTrainLossGuide() {
+  clearTimeout(scheduleTrainLossGuideUpdate.timer);
+  closePreprocessLoadGuide();
+  document.querySelector(".train-loss-combo-target")?.remove();
+}
+
+function advanceTrainLossGuideOnRandom10Click() {
+  if (currentPage !== "train_eval" || activeTrainStep !== "loss" || !guideEnabledForTrainLoss()) return;
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  if (state.step !== "loss_random10") return;
+  setGuidePageState({ step: "loss_residual_chart" }, TRAIN_LOSS_GUIDE_ID);
+  scheduleTrainLossGuideUpdate(120);
+}
+
+function advanceTrainLossGuideOnStepClick() {
+  if (currentPage !== "train_eval" || activeTrainStep !== "loss" || !guideEnabledForTrainLoss()) return;
+  const state = guidePageState(TRAIN_LOSS_GUIDE_ID);
+  if (state.step !== "loss_step") return;
+  setGuidePageState({ step: "loss_after_step_charts" }, TRAIN_LOSS_GUIDE_ID);
+  scheduleTrainLossGuideUpdate(120);
+}
+
+function trainOptimizationGuideSpec() {
+  const state = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+  const step = state.step || "optimization_feature";
+  if (step === "optimization_params") {
+    return {
+      step,
+      target: ".train-optimization-params-guide-target",
+      title: "设置初始参数",
+      body: "这里先把初始参数设成 w=10、b=5，让当前位置明显偏离低 Loss 区域。点击下一步后，系统会自动填入这两个值并刷新图表。",
+      action: "设为 w=10, b=5",
+    };
+  }
+  if (step === "optimization_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "执行一次梯度下降",
+      body: "现在点击“单步训练”。一次更新后，w 和 b 会沿负梯度方向移动，Loss 也会更新。",
+      action: "",
+    };
+  }
+  if (step === "optimization_surface") {
+    return {
+      step,
+      target: '[data-chart-card="opt_surface_3d"]',
+      title: "观察 3D Loss 曲面",
+      body: "3D 曲面展示 J(w,b) 的整体地形。当前位置在曲面上移动，目标是沿着下降方向靠近低谷。",
+      action: "下一步",
+    };
+  }
+  if (step === "optimization_contour") {
+    return {
+      step,
+      target: '[data-chart-card="opt_contour"]',
+      title: "观察 Loss 等高线",
+      body: "等高线更适合看参数路径。红点是当前参数，绿色箭头表示负梯度下降方向，蓝色轨迹记录参数更新过程。",
+      action: "下一步",
+    };
+  }
+  if (step === "optimization_loss") {
+    return {
+      step,
+      target: '[data-chart-card="opt_loss"]',
+      title: "观察 Loss 随 epoch 变化",
+      body: "这张图把参数空间里的移动转成训练曲线。重点观察单步更新后 MSE Loss 是否下降。",
+      action: "完成本步引导",
+    };
+  }
+  return {
+    step: "optimization_feature",
+    target: ".train-optimization-feature-guide-target",
+    title: "选择训练特征",
+    body: "先选择用于训练的一维输入特征。默认使用 CRIM，后续也可以切换其它特征观察训练路径和 Loss 变化。",
+    action: "下一步",
+  };
+}
+
+function updateTrainOptimizationGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "train_eval" || activeTrainStep !== "optimization" || !guideEnabledForTrainOptimization()) {
+      closeTrainOptimizationGuide();
+      return;
+    }
+    const spec = trainOptimizationGuideSpec();
+    const target = document.querySelector(spec.target);
+    if (!target) return;
+    renderTrainOptimizationGuide(spec, target);
+  });
+}
+
+function scheduleTrainOptimizationGuideUpdate(delay = 120) {
+  clearTimeout(scheduleTrainOptimizationGuideUpdate.timer);
+  scheduleTrainOptimizationGuideUpdate.timer = setTimeout(() => {
+    updateTrainOptimizationGuide();
+  }, delay);
+}
+
+function renderTrainOptimizationGuide(spec, target) {
+  closeTrainOptimizationGuide();
+  scrollTrainGuideTargetIntoView(target);
+  target.classList.add("guide-highlight");
+  const isLargeTarget = spec.step === "optimization_params"
+    || spec.step === "optimization_surface"
+    || spec.step === "optimization_contour"
+    || spec.step === "optimization_loss";
+  if (isLargeTarget) target.classList.add("guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" data-train-optimization-guide-step="${escapeHtml(spec.step)}" role="dialog" aria-live="polite" aria-label="熟悉优化准则引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        ${spec.action ? `<button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>` : ""}
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  positionGuideFocusRing(target, isLargeTarget);
+  positionGuidePopover(target);
+  requestAnimationFrame(() => {
+    positionGuideFocusRing(target, isLargeTarget);
+    positionGuidePopover(target);
+  });
+  setTimeout(() => {
+    positionGuideFocusRing(target, isLargeTarget);
+    positionGuidePopover(target);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", async event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "optimization_feature" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainOptimizationGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "optimization_feature") {
+      setGuidePageState({ step: "optimization_params" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      updateTrainOptimizationGuide();
+    } else if (step === "optimization_params") {
+      await setTrainInitialParamsExact("10", "5");
+      setGuidePageState({ step: "optimization_step" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      scheduleTrainOptimizationGuideUpdate(140);
+    } else if (step === "optimization_surface") {
+      setGuidePageState({ step: "optimization_contour" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      scheduleTrainOptimizationGuideUpdate(80);
+    } else if (step === "optimization_contour") {
+      setGuidePageState({ step: "optimization_loss" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      scheduleTrainOptimizationGuideUpdate(80);
+    } else if (step === "optimization_loss") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "optimization_feature" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainOptimizationGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function closeTrainOptimizationGuide() {
+  clearTimeout(scheduleTrainOptimizationGuideUpdate.timer);
+  closePreprocessLoadGuide();
+}
+
+function advanceTrainOptimizationGuideOnStepClick() {
+  if (currentPage !== "train_eval" || activeTrainStep !== "optimization" || !guideEnabledForTrainOptimization()) return;
+  const state = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+  if (state.step !== "optimization_step") return;
+  setGuidePageState({ step: "optimization_surface" }, TRAIN_OPTIMIZATION_GUIDE_ID);
+  scheduleTrainOptimizationGuideUpdate(120);
+}
+
+function createTrainCustomComboTarget(kind) {
+  const ids = kind === "params"
+    ? ["custom_w_path", "custom_b_path"]
+    : ["custom_standard_scatter", "custom_loss"];
+  const cards = ids.map(id => document.querySelector(`[data-chart-card="${id}"]`)).filter(Boolean);
+  if (cards.length !== ids.length) return null;
+  const className = kind === "params" ? "train-custom-param-combo-target" : "train-custom-effect-combo-target";
+  let target = document.querySelector(`.${className}`);
+  if (!target) {
+    target = document.createElement("div");
+    target.className = className;
+    document.body.appendChild(target);
+  }
+  syncTrainCustomComboTarget(target, cards);
+  return target;
+}
+
+function syncTrainCustomComboTarget(target, cards) {
+  if (!target || !cards?.length) return;
+  const rects = cards.map(card => card.getBoundingClientRect());
+  const left = Math.min(...rects.map(rect => rect.left));
+  const top = Math.min(...rects.map(rect => rect.top));
+  const right = Math.max(...rects.map(rect => rect.right));
+  const bottom = Math.max(...rects.map(rect => rect.bottom));
+  target.style.position = "fixed";
+  target.style.left = `${left}px`;
+  target.style.top = `${top}px`;
+  target.style.width = `${right - left}px`;
+  target.style.height = `${bottom - top}px`;
+  target.style.pointerEvents = "none";
+  target.style.borderRadius = "14px";
+}
+
+function highlightTrainCustomChartCards(kind) {
+  const ids = kind === "params"
+    ? ["custom_w_path", "custom_b_path"]
+    : ["custom_standard_scatter", "custom_loss"];
+  ids.forEach(id => {
+    const card = document.querySelector(`[data-chart-card="${id}"]`);
+    const item = card?.closest(".grid-stack-item");
+    item?.classList.add("guide-lift");
+    card?.classList.add("guide-highlight", "guide-highlight-large");
+  });
+}
+
+function scrollTrainCustomComboIntoView(kind) {
+  const ids = kind === "params"
+    ? ["custom_w_path", "custom_b_path"]
+    : ["custom_standard_scatter", "custom_loss"];
+  const cards = ids.map(id => document.querySelector(`[data-chart-card="${id}"]`)).filter(Boolean);
+  const main = $("main");
+  if (!cards.length || !main) return;
+  const rects = cards.map(card => card.getBoundingClientRect());
+  const mainRect = main.getBoundingClientRect();
+  const top = Math.min(...rects.map(rect => rect.top));
+  const bottom = Math.max(...rects.map(rect => rect.bottom));
+  const targetHeight = bottom - top;
+  const padding = 24;
+  const availableHeight = mainRect.height - padding * 2;
+  const targetTop = targetHeight <= availableHeight
+    ? mainRect.top + padding + (availableHeight - targetHeight) / 2
+    : mainRect.top + padding;
+  main.scrollTop += top - targetTop;
+}
+
+function trainCustomGuideSpec() {
+  const state = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+  const step = state.step || "custom_feature";
+  if (step === "custom_params") {
+    return {
+      step,
+      target: ".train-custom-params-guide-target",
+      title: "设置训练参数",
+      body: "这里可以自定义初始 w、b、学习率、周期数和动画速度。参数决定模型从哪里出发、每一步走多远，以及最多训练多少轮。",
+      action: "下一步",
+    };
+  }
+  if (step === "custom_step") {
+    return {
+      step,
+      target: "#stepBtn",
+      title: "先单步训练一次",
+      body: "请点击“单步训练”。先看一轮更新，更容易把右侧参数设置和中间图表变化对应起来。",
+      action: "",
+    };
+  }
+  if (step === "custom_scatter_loss") {
+    return {
+      step,
+      target: ".train-custom-effect-combo-target",
+      title: "对照模型效果和 Loss",
+      body: "同时观察标准化散点图和 MSE Loss 曲线：左侧看回归线是否更贴近样本趋势，右侧看本轮更新后 Loss 是否下降。",
+      action: "下一步",
+    };
+  }
+  if (step === "custom_param_paths") {
+    return {
+      step,
+      target: ".train-custom-param-combo-target",
+      title: "观察 w 和 b 的轨迹",
+      body: "w 和 b 是共同更新的参数。两张轨迹图能帮你看到每一轮训练中参数分别如何变化，并共同决定回归线的位置。",
+      action: "下一步",
+    };
+  }
+  if (step === "custom_calc") {
+    return {
+      step,
+      target: "#customCalcCard",
+      title: "查看本轮计算过程",
+      body: "最后回到本轮计算过程，查看预测值、误差、Loss、梯度和参数更新如何一步步算出。图表变化不是黑箱，而是来自这一轮计算。",
+      action: "完成本步引导",
+    };
+  }
+  return {
+    step: "custom_feature",
+    target: ".train-custom-feature-guide-target",
+    title: "选择训练特征",
+    body: "先选择用于训练的一维输入特征。后面的散点图、Loss 曲线和参数轨迹都会围绕这个特征更新。",
+    action: "下一步",
+  };
+}
+
+function updateTrainCustomGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "train_eval" || activeTrainStep !== "custom" || !guideEnabledForTrainCustom()) {
+      closeTrainCustomGuide();
+      return;
+    }
+    const spec = trainCustomGuideSpec();
+    const target = spec.step === "custom_scatter_loss"
+      ? createTrainCustomComboTarget("effect")
+      : spec.step === "custom_param_paths"
+        ? createTrainCustomComboTarget("params")
+        : document.querySelector(spec.target);
+    if (!target) return;
+    renderTrainCustomGuide(spec, target);
+  });
+}
+
+function scheduleTrainCustomGuideUpdate(delay = 120) {
+  clearTimeout(scheduleTrainCustomGuideUpdate.timer);
+  scheduleTrainCustomGuideUpdate.timer = setTimeout(() => {
+    updateTrainCustomGuide();
+  }, delay);
+}
+
+function renderTrainCustomGuide(spec, target) {
+  closeTrainCustomGuide();
+  const comboKind = spec.step === "custom_scatter_loss" ? "effect" : spec.step === "custom_param_paths" ? "params" : "";
+  const visualTarget = comboKind ? createTrainCustomComboTarget(comboKind) : target;
+  if (!visualTarget) return;
+  if (comboKind) {
+    scrollTrainCustomComboIntoView(comboKind);
+    highlightTrainCustomChartCards(comboKind);
+    syncTrainCustomComboTarget(
+      visualTarget,
+      (comboKind === "params" ? ["custom_w_path", "custom_b_path"] : ["custom_standard_scatter", "custom_loss"])
+        .map(id => document.querySelector(`[data-chart-card="${id}"]`))
+        .filter(Boolean)
+    );
+  } else {
+    scrollTrainGuideTargetIntoView(visualTarget);
+  }
+  visualTarget.classList.add("guide-highlight");
+  const isLargeTarget = spec.step !== "custom_feature" && spec.step !== "custom_step";
+  if (isLargeTarget) visualTarget.classList.add("guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" data-train-custom-guide-step="${escapeHtml(spec.step)}" role="dialog" aria-live="polite" aria-label="自定义参数训练引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        ${spec.action ? `<button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>` : ""}
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  positionGuideFocusRing(visualTarget, isLargeTarget);
+  positionGuidePopover(visualTarget);
+  requestAnimationFrame(() => {
+    if (comboKind) {
+      syncTrainCustomComboTarget(
+        visualTarget,
+        (comboKind === "params" ? ["custom_w_path", "custom_b_path"] : ["custom_standard_scatter", "custom_loss"])
+          .map(id => document.querySelector(`[data-chart-card="${id}"]`))
+          .filter(Boolean)
+      );
+    }
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  });
+  setTimeout(() => {
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "custom_feature" }, TRAIN_CUSTOM_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainCustomGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "custom_feature") {
+      setGuidePageState({ step: "custom_params" }, TRAIN_CUSTOM_GUIDE_ID);
+      updateTrainCustomGuide();
+    } else if (step === "custom_params") {
+      setGuidePageState({ step: "custom_step" }, TRAIN_CUSTOM_GUIDE_ID);
+      updateTrainCustomGuide();
+    } else if (step === "custom_scatter_loss") {
+      setGuidePageState({ step: "custom_param_paths" }, TRAIN_CUSTOM_GUIDE_ID);
+      scheduleTrainCustomGuideUpdate(80);
+    } else if (step === "custom_param_paths") {
+      setGuidePageState({ step: "custom_calc" }, TRAIN_CUSTOM_GUIDE_ID);
+      scheduleTrainCustomGuideUpdate(80);
+    } else if (step === "custom_calc") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "custom_feature" }, TRAIN_CUSTOM_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closeTrainCustomGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function closeTrainCustomGuide() {
+  clearTimeout(scheduleTrainCustomGuideUpdate.timer);
+  closePreprocessLoadGuide();
+  document.querySelector(".train-custom-effect-combo-target")?.remove();
+  document.querySelector(".train-custom-param-combo-target")?.remove();
+}
+
+function advanceTrainCustomGuideOnStepClick() {
+  if (currentPage !== "train_eval" || activeTrainStep !== "custom" || !guideEnabledForTrainCustom()) return;
+  const state = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+  if (state.step !== "custom_step") return;
+  setGuidePageState({ step: "custom_scatter_loss" }, TRAIN_CUSTOM_GUIDE_ID);
+  scheduleTrainCustomGuideUpdate(120);
+}
+
+function advanceTrainPreprocessEffectGuideOnStepClick() {
+  if (currentPage !== "train_eval" || activeTrainStep !== "preprocess_effect" || !guideEnabledForTrainPreprocessEffect()) return;
+  const state = guidePageState(TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+  if (state.step === "effect_first_step") {
+    setGuidePageState({ step: "effect_compare_chart" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+    setTimeout(updateTrainPreprocessEffectGuide, 80);
+  } else if (state.step === "effect_second_step") {
+    setGuidePageState({ step: "effect_result_chart" }, TRAIN_PREPROCESS_EFFECT_GUIDE_ID);
+    setTimeout(updateTrainPreprocessEffectGuide, 80);
+  }
+}
+
+async function setTrainLearningRateExact(value) {
+  const input = $("lr");
+  if (!input) return;
+  input.value = value;
+  updateTrainRangeText();
+  persistTrainFormState();
+  if (activeTrainStep === "preprocess_effect") {
+    await prepareTrainCompare();
+  }
+}
+
+async function setTrainInitialParamsExact(w, b) {
+  const wInput = $("w0");
+  const bInput = $("b0");
+  if (wInput) wInput.value = w;
+  if (bInput) bInput.value = b;
+  persistTrainFormState();
+  if (activeTrainStep === "preprocess_effect") await prepareTrainCompare();
+  else await prepareTraining();
 }
 
 function trainUseStandardized() {
@@ -251,6 +1519,10 @@ function updateTrainInfoCards(frame) {
 }
 
 async function renderTrainShell() {
+  if (currentExperimentId() === "naive_bayes") {
+    await renderNbTrainShell();
+    return;
+  }
   await loadTrainPageSchema();
   document.querySelector(".shell").classList.remove("theory");
   ensureTrainTopFlow();
@@ -259,6 +1531,29 @@ async function renderTrainShell() {
 }
 
 async function renderTrainCurrentStep() {
+  if (activeTrainStep !== "process") closeTrainProcessGuide();
+  if (activeTrainStep !== "preprocess_effect") closeTrainPreprocessEffectGuide();
+  if (activeTrainStep !== "loss") closeTrainLossGuide();
+  if (activeTrainStep !== "optimization") closeTrainOptimizationGuide();
+  if (activeTrainStep !== "custom") closeTrainCustomGuide();
+  if (activeTrainStep === "loss") {
+    const lossGuideState = guidePageState(TRAIN_LOSS_GUIDE_ID);
+    if (guideGlobalEnabled() && lossGuideState.enabled && !lossGuideState.completed && !lossGuideState.dismissed && !document.querySelector(".guide-popover")) {
+      ensureTrainLossGuideStep();
+    }
+  }
+  if (activeTrainStep === "optimization") {
+    const optimizationGuideState = guidePageState(TRAIN_OPTIMIZATION_GUIDE_ID);
+    if (guideGlobalEnabled() && optimizationGuideState.enabled && !optimizationGuideState.completed && !optimizationGuideState.dismissed && !document.querySelector(".guide-popover")) {
+      ensureTrainOptimizationGuideStep();
+    }
+  }
+  if (activeTrainStep === "custom") {
+    const customGuideState = guidePageState(TRAIN_CUSTOM_GUIDE_ID);
+    if (guideGlobalEnabled() && customGuideState.enabled && !customGuideState.completed && !customGuideState.dismissed && !document.querySelector(".guide-popover")) {
+      ensureTrainCustomGuideStep();
+    }
+  }
   renderTrainFlow();
   $("main").innerHTML = `<div id="trainContent"></div>`;
   if (activeTrainStep === "preprocess_effect" && !trainCompareEntered) {
@@ -296,12 +1591,12 @@ function ensureTrainCompareState() {
   if (!Array.isArray(viewStateStore.trainCompareViewsV1)) {
     viewStateStore.trainCompareViewsV1 = [];
   }
-  const saved = viewStateStore.trainFormStateV1 || {};
-  viewStateStore.trainFormStateV1 = {
+  const saved = trainFormStateForStep("preprocess_effect");
+  setTrainFormStateForStep("preprocess_effect", {
     ...TRAIN_STEP_DEFAULTS.preprocess_effect,
     ...saved,
-    trainFeature: saved.trainFeature || "RM",
-  };
+    trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE,
+  });
 }
 
 function renderTrainStepPanel() {
@@ -310,7 +1605,7 @@ function renderTrainStepPanel() {
   if (activeTrainStep === "loss") return renderLossFunctionPanel();
   if (activeTrainStep === "optimization") return renderOptimizationCriterionPanel();
   if (activeTrainStep === "custom") return renderCustomParameterPanel();
-  const saved = activeTrainStep === "custom" ? (viewStateStore.trainFormStateV1 || {}) : {};
+  const saved = activeTrainStep === "custom" ? trainFormStateForStep("custom") : {};
   const defaults = { ...trainStepDefaults(), ...saved };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
@@ -348,8 +1643,8 @@ function renderTrainStepPanel() {
 }
 
 function renderRegressionProcessPanel() {
-  const saved = viewStateStore.trainFormStateV1 || {};
-  const defaults = { ...TRAIN_STEP_DEFAULTS.process, ...saved, trainFeature: saved.trainFeature || "RM" };
+  const saved = trainFormStateForStep("process");
+  const defaults = { ...TRAIN_STEP_DEFAULTS.process, ...saved, trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
@@ -357,13 +1652,13 @@ function renderRegressionProcessPanel() {
     ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u56de\u5f52\u8fc7\u7a0b</h3>
-      <div class="control-group">
+      <div class="control-group train-process-feature-guide-target">
         <label class="control-label" for="trainFeature">\u7279\u5f81\u9009\u62e9</label>
         <select id="trainFeature">
           ${features.map(item => optionHtml(item, feature, item)).join("")}
         </select>
       </div>
-      <div class="control-group">
+      <div class="control-group train-process-params-guide-target">
         <div class="field-grid">
           <label class="control-label train-param-input">w<input id="w0" type="text" inputmode="decimal" value="${escapeHtml(defaults.w0)}"></label>
           <label class="control-label train-param-input">b<input id="b0" type="text" inputmode="decimal" value="${escapeHtml(defaults.b0)}"></label>
@@ -383,8 +1678,8 @@ function renderRegressionProcessPanel() {
 }
 
 function renderPreprocessEffectPanel() {
-  const saved = viewStateStore.trainFormStateV1 || {};
-  const defaults = { ...TRAIN_STEP_DEFAULTS.preprocess_effect, ...saved, trainFeature: saved.trainFeature || "RM" };
+  const saved = trainFormStateForStep("preprocess_effect");
+  const defaults = { ...TRAIN_STEP_DEFAULTS.preprocess_effect, ...saved, trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
@@ -392,7 +1687,7 @@ function renderPreprocessEffectPanel() {
     ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u9884\u5904\u7406\u7684\u5f71\u54cd</h3>
-      <div class="control-group">
+      <div class="control-group train-effect-feature-guide-target">
         <label class="control-label" for="trainFeature">\u7279\u5f81\u9009\u62e9</label>
         <select id="trainFeature">
           ${features.map(item => optionHtml(item, feature, item)).join("")}
@@ -418,8 +1713,8 @@ function renderPreprocessEffectPanel() {
 }
 
 function renderLossFunctionPanel() {
-  const saved = viewStateStore.trainFormStateV1 || {};
-  const defaults = { ...TRAIN_STEP_DEFAULTS.loss, ...saved, trainFeature: saved.trainFeature || "RM" };
+  const saved = trainFormStateForStep("loss");
+  const defaults = { ...TRAIN_STEP_DEFAULTS.loss, ...saved, trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
@@ -427,7 +1722,7 @@ function renderLossFunctionPanel() {
     ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u635f\u5931\u51fd\u6570</h3>
-      <div class="control-group">
+      <div class="control-group train-loss-feature-guide-target">
         <label class="control-label" for="trainFeature">\u7279\u5f81\u9009\u62e9</label>
         <select id="trainFeature">
           ${features.map(item => optionHtml(item, feature, item)).join("")}
@@ -453,8 +1748,8 @@ function renderLossFunctionPanel() {
 }
 
 function renderOptimizationCriterionPanel() {
-  const saved = viewStateStore.trainFormStateV1 || {};
-  const defaults = { ...TRAIN_STEP_DEFAULTS.optimization, ...saved, trainFeature: saved.trainFeature || "RM" };
+  const saved = trainFormStateForStep("optimization");
+  const defaults = { ...TRAIN_STEP_DEFAULTS.optimization, ...saved, trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
@@ -462,13 +1757,13 @@ function renderOptimizationCriterionPanel() {
     ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u719f\u6089\u4f18\u5316\u51c6\u5219</h3>
-      <div class="control-group">
+      <div class="control-group train-optimization-feature-guide-target">
         <label class="control-label" for="trainFeature">\u7279\u5f81\u9009\u62e9</label>
         <select id="trainFeature">
           ${features.map(item => optionHtml(item, feature, item)).join("")}
         </select>
       </div>
-      <div class="control-group">
+      <div class="control-group train-optimization-params-guide-target">
         <div class="field-grid">
           <label class="control-label train-param-input">w<input id="w0" type="text" inputmode="decimal" value="${escapeHtml(defaults.w0)}"></label>
           <label class="control-label train-param-input">b<input id="b0" type="text" inputmode="decimal" value="${escapeHtml(defaults.b0)}"></label>
@@ -490,8 +1785,8 @@ function renderOptimizationCriterionPanel() {
 }
 
 function renderCustomParameterPanel() {
-  const saved = viewStateStore.trainFormStateV1 || {};
-  const defaults = { ...TRAIN_STEP_DEFAULTS.custom, ...saved, trainFeature: saved.trainFeature || "RM" };
+  const saved = trainFormStateForStep("custom");
+  const defaults = { ...TRAIN_STEP_DEFAULTS.custom, ...saved, trainFeature: saved.trainFeature || TRAIN_DEFAULT_FEATURE };
   const features = currentDatasetMeta?.features || FEATURE_NAMES;
   const feature = defaults.trainFeature && features.includes(defaults.trainFeature) ? defaults.trainFeature : (features[0] || DEFAULT_FEATURE);
   return `
@@ -499,13 +1794,13 @@ function renderCustomParameterPanel() {
     ${guideSwitchPanelHtml?.() || ""}
     <div class="control-card dataset-load-card">
       <h3>\u81ea\u5b9a\u4e49\u53c2\u6570\u8bad\u7ec3</h3>
-      <div class="control-group">
+      <div class="control-group train-custom-feature-guide-target">
         <label class="control-label" for="trainFeature">\u7279\u5f81\u9009\u62e9</label>
         <select id="trainFeature">
           ${features.map(item => optionHtml(item, feature, item)).join("")}
         </select>
       </div>
-      <div class="control-group">
+      <div class="control-group train-custom-params-guide-target">
         <div class="field-grid">
           <label class="control-label train-param-input">w<input id="w0" type="text" inputmode="decimal" value="${escapeHtml(defaults.w0)}"></label>
           <label class="control-label train-param-input">b<input id="b0" type="text" inputmode="decimal" value="${escapeHtml(defaults.b0)}"></label>
@@ -555,7 +1850,7 @@ function renderTrainStepSpecificControls(defaults) {
 
 function renderTrainButtons() {
   return `
-    <div class="button-grid">
+    <div class="button-grid train-process-actions-guide-target">
       <button class="btn primary" id="stepBtn" type="button">\u5355\u6b65\u8bad\u7ec3</button>
       <button class="btn green" id="autoBtn" type="button">\u81ea\u52a8\u6f14\u793a</button>
       <button class="btn dark" id="pauseBtn" type="button">\u6682\u505c</button>
@@ -571,7 +1866,7 @@ function trainCodeButtonHtml(stepId) {
 function trainCurrentParams() {
   const defaults = trainStepDefaults();
   const feature = $("trainFeature")?.value
-    || viewStateStore.trainFormStateV1?.trainFeature
+    || trainFormStateForStep(activeTrainStep)?.trainFeature
     || defaults.trainFeature
     || DEFAULT_FEATURE;
   return {
@@ -814,15 +2109,17 @@ function bindTrainCodeButtons() {
 
 function trainRangeHtml(id, label, value, min, max, step, valueId, formatter) {
   return `
-    <label class="control-label range-label" for="${id}">${label}</label>
-    <div class="range-control">
-      <input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(value)}">
-      <div class="range-stepper" aria-label="${escapeHtml(label)}\u5fae\u8c03">
-        <button class="range-step-btn" type="button" data-step-target="${escapeHtml(id)}" data-step-dir="1" aria-label="\u589e\u52a0${escapeHtml(label)}">&#9650;</button>
-        <button class="range-step-btn" type="button" data-step-target="${escapeHtml(id)}" data-step-dir="-1" aria-label="\u51cf\u5c11${escapeHtml(label)}">&#9660;</button>
+    <div class="range-field range-${escapeHtml(id)}-guide-target">
+      <label class="control-label range-label" for="${id}">${label}</label>
+      <div class="range-control">
+        <input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${escapeHtml(value)}">
+        <div class="range-stepper" aria-label="${escapeHtml(label)}\u5fae\u8c03">
+          <button class="range-step-btn" type="button" data-step-target="${escapeHtml(id)}" data-step-dir="1" aria-label="\u589e\u52a0${escapeHtml(label)}">&#9650;</button>
+          <button class="range-step-btn" type="button" data-step-target="${escapeHtml(id)}" data-step-dir="-1" aria-label="\u51cf\u5c11${escapeHtml(label)}">&#9660;</button>
+        </div>
       </div>
-    </div>
-    <div class="range-line"><span>${min}</span><strong id="${valueId}">${escapeHtml(formatter(value))}</strong><span>${max}</span></div>`;
+      <div class="range-line"><span>${min}</span><strong id="${valueId}">${escapeHtml(formatter(value))}</strong><span>${max}</span></div>
+    </div>`;
 }
 
 function renderTrainChartSelector(views) {
@@ -860,9 +2157,12 @@ function bindTrainStepPanel() {
       else prepareTraining();
     });
   });
-  $("speed")?.addEventListener("input", updateTrainRangeText);
-  $("lr")?.addEventListener("input", updateTrainRangeText);
-  $("epochs")?.addEventListener("input", updateTrainRangeText);
+  ["speed", "lr", "epochs"].forEach(id => {
+    $(id)?.addEventListener("input", () => {
+      updateTrainRangeText();
+      persistTrainFormState();
+    });
+  });
   document.querySelectorAll('input[name="trainViews"]').forEach(el => el.addEventListener("change", () => {
     if (activeTrainStep === "custom") saveCheckedValues("trainViews", "trainSelectedViewsV1");
     renderTrainFrame(currentFrame);
@@ -878,6 +2178,10 @@ function bindTrainStepPanel() {
     else if (activeTrainStep === "optimization") renderTrainOptimizationFrame(currentFrame + 1);
     else if (activeTrainStep === "custom") renderTrainCustomFrame(currentFrame + 1);
     else renderTrainFrame(currentFrame + 1);
+    advanceTrainPreprocessEffectGuideOnStepClick();
+    advanceTrainLossGuideOnStepClick();
+    advanceTrainOptimizationGuideOnStepClick();
+    advanceTrainCustomGuideOnStepClick();
   });
   $("autoBtn")?.addEventListener("click", startAuto);
   $("pauseBtn")?.addEventListener("click", stopAuto);
@@ -900,20 +2204,23 @@ function updateTrainRangeText() {
 }
 
 function persistTrainFormState() {
-  const ids = ["trainFeature", "trainStd", "w0", "b0", "lr", "epochs", "speed"];
   const state = {};
-  ids.forEach(id => {
+  let hasField = false;
+  TRAIN_FORM_IDS.forEach(id => {
     const el = $(id);
-    if (el) state[id] = el.value;
+    if (el) {
+      state[id] = el.value;
+      hasField = true;
+    }
   });
-  viewStateStore.trainFormStateV1 = state;
+  if (!hasField) return;
+  setTrainFormStateForStep(activeTrainStep, state);
 }
 
 function restoreTrainFormState() {
-  const state = viewStateStore.trainFormStateV1 || {};
-  if (!state.trainFeature && trainData?.feature) state.trainFeature = trainData.feature;
+  const state = trainFormStateForStep(activeTrainStep);
   if (!state.trainStd && trainData) state.trainStd = trainData.use_standardized ? "true" : "false";
-  ["trainFeature", "trainStd", "w0", "b0", "lr", "epochs", "speed"].forEach(id => {
+  TRAIN_FORM_IDS.forEach(id => {
     const el = $(id);
     if (!el || state[id] == null) return;
     if (el.tagName === "SELECT" && ![...el.options].some(opt => opt.value === state[id])) return;
@@ -958,6 +2265,9 @@ function restoreTrainView() {
   else if (activeTrainStep === "optimization") renderTrainOptimizationFrame(currentFrame);
   else if (activeTrainStep === "custom") renderTrainCustomFrame(currentFrame);
   else renderTrainFrame(currentFrame);
+  if (activeTrainStep === "loss") scheduleTrainLossGuideUpdate(140);
+  if (activeTrainStep === "optimization") scheduleTrainOptimizationGuideUpdate(140);
+  if (activeTrainStep === "custom") scheduleTrainCustomGuideUpdate(140);
 }
 
 async function prepareTraining() {
@@ -989,6 +2299,9 @@ async function prepareTraining() {
     else if (activeTrainStep === "optimization") renderTrainOptimizationFrame(0);
     else if (activeTrainStep === "custom") renderTrainCustomFrame(0);
     else renderTrainFrame(0);
+    if (activeTrainStep === "loss") scheduleTrainLossGuideUpdate(140);
+    if (activeTrainStep === "optimization") scheduleTrainOptimizationGuideUpdate(140);
+    if (activeTrainStep === "custom") scheduleTrainCustomGuideUpdate(140);
   } catch (err) {
     console.warn("Training preparation skipped:", err);
     trainEmptyState("\u8bf7\u5148\u5728\u201c\u6570\u636e\u9884\u5904\u7406\u201d\u9875\u52a0\u8f7d\u6570\u636e\u96c6\uff0c\u7136\u540e\u56de\u5230\u6a21\u578b\u8bad\u7ec3\u9875\u5f00\u59cb\u8bad\u7ec3\u3002");
@@ -1079,8 +2392,9 @@ function renderTrainProcessMain() {
     trainCompareViewsKey = viewsKey;
   }
   const ch = charts.get("chart_process_standard_scatter") || initChart("chart_process_standard_scatter");
-  ch.setOption(trainProcessScatterOption(), true);
+  trainSetChartOption(ch, "process_standard_scatter", trainProcessScatterOption(), true);
   requestAnimationFrame(() => charts.forEach(chart => chart.resize()));
+  updateTrainProcessGuide();
 }
 
 function ensureTrainProcessGrid() {
@@ -1097,9 +2411,10 @@ function ensureTrainProcessGrid() {
 function trainProcessScatterOption() {
   const frame = trainData.history[currentFrame];
   const points = trainData.scatter.x.map((x, i) => [x, trainData.scatter.y[i]]);
-  const currentLine = lineForParams(frame.w, frame.b);
-  const bestLine = lineForParams(trainData.best.w, trainData.best.b);
-  return {
+  const axisRange = trainFixedZeroAxisRange(trainData);
+  const currentLine = lineForParams(frame.w, frame.b, axisRange);
+  const bestLine = lineForParams(trainData.best.w, trainData.best.b, axisRange);
+  return applyFixedZeroAxis({
     tooltip: { trigger: "item" },
     legend: { top: 12 },
     grid: { left: 58, right: 24, top: 56, bottom: 48 },
@@ -1114,7 +2429,7 @@ function trainProcessScatterOption() {
       { name: "\u5f53\u524d\u56de\u5f52\u7ebf", type: "line", data: currentLine, showSymbol: false, lineStyle: { color: "#d9354f", width: 3 } },
       { name: "\u6700\u4f18\u53c2\u8003\u7ebf", type: "line", data: bestLine, showSymbol: false, lineStyle: { color: "#0f9f78", width: 2.6, type: "dashed" } }
     ]
-  };
+  }, axisRange);
 }
 
 function renderTrainOptimizationFrame(index) {
@@ -1130,8 +2445,8 @@ function renderTrainOptimizationFrame(index) {
 
 function renderTrainOptimizationMain() {
   const grid = ensureTrainOptimizationGrid();
-  const viewsKey = trainOptimizationSliceMode();
-  if (trainOptimizationViewsKey !== viewsKey || !charts.get("chart_opt_contour") || !charts.get("chart_opt_slice") || !charts.get("chart_opt_loss") || !charts.get("chart_loss_surface_3d")) {
+  const viewsKey = "surface_contour_loss_v1";
+  if (trainOptimizationViewsKey !== viewsKey || !charts.get("chart_loss_surface_3d") || !charts.get("chart_opt_contour") || !charts.get("chart_opt_loss")) {
     destroyDataGrid();
     disposeCharts();
     dataGridMode = "train_optimization";
@@ -1159,18 +2474,16 @@ function renderTrainOptimizationMain() {
     trainOptimizationViewsKey = viewsKey;
   }
 
+  const surface = charts.get("chart_loss_surface_3d") || initChart("chart_loss_surface_3d");
+  surface.setOption(lossSurface3DOption(currentFrame), false);
+
   const contour = charts.get("chart_opt_contour") || initChart("chart_opt_contour");
   contour.setOption(trainOptimizationContourOption(), true);
 
-  const slice = charts.get("chart_opt_slice") || initChart("chart_opt_slice");
-  slice.setOption(trainOptimizationSliceOption(), true);
-
   const loss = charts.get("chart_opt_loss") || initChart("chart_opt_loss");
   loss.setOption(trainOptimizationLossOption(), true);
-
-  const surface = charts.get("chart_loss_surface_3d") || initChart("chart_loss_surface_3d");
-  surface.setOption(lossSurface3DOption(currentFrame), false);
   requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+  scheduleTrainOptimizationGuideUpdate(140);
 }
 
 function ensureTrainOptimizationGrid() {
@@ -1186,17 +2499,14 @@ function ensureTrainOptimizationGrid() {
 
 function trainOptimizationGridHtml() {
   return `
-    <div class="grid-stack-item" data-view="opt_contour" gs-x="0" gs-y="0" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
-      <div class="grid-stack-item-content">${trainOptimizationContourCardHtml()}</div>
+    <div class="grid-stack-item" data-view="opt_surface_3d" gs-x="0" gs-y="0" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
+      <div class="grid-stack-item-content">${trainOptimizationSurfaceCardHtml()}</div>
     </div>
-    <div class="grid-stack-item" data-view="opt_slice" gs-x="2" gs-y="0" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
-      <div class="grid-stack-item-content">${trainOptimizationSliceCardHtml()}</div>
+    <div class="grid-stack-item" data-view="opt_contour" gs-x="2" gs-y="0" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
+      <div class="grid-stack-item-content">${trainOptimizationContourCardHtml()}</div>
     </div>
     <div class="grid-stack-item" data-view="opt_loss" gs-x="0" gs-y="2" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
       <div class="grid-stack-item-content">${trainOptimizationLossCardHtml()}</div>
-    </div>
-    <div class="grid-stack-item" data-view="opt_surface_3d" gs-x="2" gs-y="2" gs-w="2" gs-h="2" gs-min-w="1" gs-min-h="1">
-      <div class="grid-stack-item-content">${trainOptimizationSurfaceCardHtml()}</div>
     </div>`;
 }
 
@@ -1552,7 +2862,7 @@ function renderTrainCustomMain() {
   }
 
   const scatter = charts.get("chart_custom_standard_scatter") || initChart("chart_custom_standard_scatter");
-  scatter.setOption(trainCustomScatterOption(), true);
+  trainSetChartOption(scatter, "custom_standard_scatter", trainCustomScatterOption(), true);
 
   const loss = charts.get("chart_custom_loss") || initChart("chart_custom_loss");
   loss.setOption(trainCustomLossOption(), true);
@@ -1565,6 +2875,7 @@ function renderTrainCustomMain() {
 
   updateTrainCustomCalcCard();
   requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+  scheduleTrainCustomGuideUpdate(140);
 }
 
 function ensureTrainCustomGrid() {
@@ -1596,7 +2907,8 @@ function trainCustomGridHtml() {
 function trainCustomScatterOption() {
   const frame = trainData.history[currentFrame];
   const points = trainData.scatter.x.map((x, i) => [x, trainData.scatter.y[i]]);
-  return {
+  const axisRange = trainFixedZeroAxisRange(trainData);
+  return applyFixedZeroAxis({
     tooltip: { trigger: "item" },
     legend: { top: 12 },
     grid: { left: 58, right: 24, top: 56, bottom: 48 },
@@ -1608,10 +2920,10 @@ function trainCustomScatterOption() {
     ],
     series: [
       { name: "\u6837\u672c\u70b9", type: "scatter", data: points, symbolSize: 6, itemStyle: { color: "rgba(15,159,120,.62)" } },
-      { name: "\u5f53\u524d\u56de\u5f52\u7ebf", type: "line", data: lineForParams(frame.w, frame.b), showSymbol: false, lineStyle: { color: "#d9354f", width: 3 } },
-      { name: "\u6700\u4f18\u53c2\u8003\u7ebf", type: "line", data: lineForParams(trainData.best.w, trainData.best.b), showSymbol: false, lineStyle: { color: "#0f9f78", width: 2.6, type: "dashed" } }
+      { name: "\u5f53\u524d\u56de\u5f52\u7ebf", type: "line", data: lineForParams(frame.w, frame.b, axisRange), showSymbol: false, lineStyle: { color: "#d9354f", width: 3 } },
+      { name: "\u6700\u4f18\u53c2\u8003\u7ebf", type: "line", data: lineForParams(trainData.best.w, trainData.best.b, axisRange), showSymbol: false, lineStyle: { color: "#0f9f78", width: 2.6, type: "dashed" } }
     ]
-  };
+  }, axisRange);
 }
 
 function trainCustomLossOption() {
@@ -1701,7 +3013,7 @@ function renderTrainLossMain() {
   }
 
   const residualChart = charts.get("chart_loss_residual_main") || initChart("chart_loss_residual_main");
-  residualChart.setOption(trainLossResidualOption(), true);
+  trainSetChartOption(residualChart, "loss_residual_main", trainLossResidualOption(), true);
   residualChart.off("click");
   residualChart.on("click", params => {
     if (params.seriesName !== "\u6837\u672c\u70b9") return;
@@ -1777,8 +3089,12 @@ function bindTrainLossControls() {
   document.querySelectorAll("[data-loss-residual-mode]").forEach(btn => {
     btn.addEventListener("click", () => {
       viewStateStore.trainLossResidualModeV1 = btn.dataset.lossResidualMode;
+      if (btn.dataset.lossResidualMode === "random10") {
+        resetTrainLossRandom10Indices();
+      }
       trainLossViewsKey = "";
       renderTrainLossFrame(currentFrame);
+      if (btn.dataset.lossResidualMode === "random10") advanceTrainLossGuideOnRandom10Click();
     });
   });
   document.querySelectorAll("[data-loss-overall-view]").forEach(btn => {
@@ -1798,10 +3114,15 @@ function bindTrainLossControls() {
   });
   document.querySelector("[data-loss-random-sample]")?.addEventListener("click", () => {
     const count = trainData?.scatter?.x?.length || 0;
-    if (count) setTrainLossSampleIndex(Math.floor(Math.random() * count));
-    viewStateStore.trainLossResidualModeV1 = "single";
+    if (trainLossResidualMode() === "random10") {
+      resetTrainLossRandom10Indices(count);
+    } else {
+      if (count) setTrainLossSampleIndex(Math.floor(Math.random() * count));
+      viewStateStore.trainLossResidualModeV1 = "single";
+    }
     trainLossViewsKey = "";
     renderTrainLossFrame(currentFrame);
+    advanceTrainLossGuideOnRandom10Click();
   });
 }
 
@@ -1816,16 +3137,97 @@ function trainLossRows(frame = trainData?.history?.[currentFrame]) {
   });
 }
 
-function lineForParams(w, b) {
+function axisOptionWithRange(base, range) {
+  return { ...base, min: range.min, max: range.max };
+}
+
+function trainNiceAxisRange(values) {
+  const finite = values.map(Number).filter(Number.isFinite);
+  finite.push(0);
+  const rawMin = Math.min(...finite);
+  const rawMax = Math.max(...finite);
+  const epsilon = 1e-9;
+  let min = Math.floor(rawMin + epsilon);
+  let max = Math.ceil(rawMax - epsilon);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  return {
+    min,
+    max,
+  };
+}
+
+function trainFixedZeroAxisRange(data) {
+  const xs = [];
+  const ys = [];
+  (data?.scatter?.x || []).forEach((x, index) => {
+    const y = data?.scatter?.y?.[index];
+    if (Number.isFinite(Number(x)) && Number.isFinite(Number(y))) {
+      xs.push(Number(x));
+      ys.push(Number(y));
+    }
+  });
+  [lineForParamsInData(data, 0, 0), lineForParamsInData(data, data?.best?.w ?? 0, data?.best?.b ?? 0)]
+    .flat()
+    .forEach(point => {
+      if (Number.isFinite(Number(point?.[0])) && Number.isFinite(Number(point?.[1]))) {
+        xs.push(Number(point[0]));
+        ys.push(Number(point[1]));
+      }
+    });
+  return {
+    x: trainNiceAxisRange(xs),
+    y: trainNiceAxisRange(ys),
+  };
+}
+
+function lineForParams(w, b, axisRange = null) {
   const xs = trainData?.line_x?.length
     ? trainData.line_x
     : [Math.min(...(trainData?.scatter?.x || [0])), Math.max(...(trainData?.scatter?.x || [1]))];
+  const lineXs = axisRange?.x ? [axisRange.x.min, axisRange.x.max] : xs;
+  return lineXs.map(x => [x, w * x + b]);
+}
+
+function lineForParamsInData(data, w, b) {
+  const xs = data?.line_x?.length
+    ? data.line_x
+    : [Math.min(...(data?.scatter?.x || [0])), Math.max(...(data?.scatter?.x || [1]))];
   return xs.map(x => [x, w * x + b]);
+}
+
+function lineForParamsInRange(range, w, b) {
+  return [range.x.min, range.x.max].map(x => [x, w * x + b]);
 }
 
 function trainLossCurrentSample(frame = trainData?.history?.[currentFrame]) {
   const rows = trainLossRows(frame);
   return rows[trainLossSampleIndex()] || null;
+}
+
+function trainLossRandom10Indices(count) {
+  const saved = viewStateStore.trainLossRandom10IndicesV1;
+  if (
+    Array.isArray(saved)
+    && saved.length
+    && saved.every(index => Number.isInteger(index) && index >= 0 && index < count)
+  ) {
+    return saved.slice(0, Math.min(10, count));
+  }
+  return resetTrainLossRandom10Indices(count);
+}
+
+function resetTrainLossRandom10Indices(count = trainData?.scatter?.x?.length || 0) {
+  const indices = Array.from({ length: count }, (_item, index) => index);
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  const selected = indices.slice(0, Math.min(10, count)).sort((a, b) => a - b);
+  viewStateStore.trainLossRandom10IndicesV1 = selected;
+  return selected;
 }
 
 function trainLossResidualIndices(rows) {
@@ -1834,10 +3236,7 @@ function trainLossResidualIndices(rows) {
   if (mode === "top5") return [...rows].sort((a, b) => Math.abs(b.residual) - Math.abs(a.residual)).slice(0, 5).map(row => row.index);
   const count = rows.length;
   if (!count) return [];
-  const start = (currentFrame * 7 + trainLossSampleIndex()) % count;
-  const indices = [];
-  for (let i = 0; i < Math.min(10, count); i += 1) indices.push((start + i * 37) % count);
-  return indices;
+  return trainLossRandom10Indices(count);
 }
 
 function trainLossResidualOption() {
@@ -1847,8 +3246,9 @@ function trainLossResidualOption() {
   const selected = new Set(trainLossResidualIndices(rows));
   const residualLines = rows.filter(row => selected.has(row.index)).map(row => ({ coords: [[row.x, row.y], [row.x, row.yhat]] }));
   const selectedPoints = rows.filter(row => selected.has(row.index)).map(row => [row.x, row.y]);
-  const currentLine = lineForParams(frame.w, frame.b);
-  return {
+  const axisRange = trainFixedZeroAxisRange(trainData);
+  const currentLine = lineForParams(frame.w, frame.b, axisRange);
+  return applyFixedZeroAxis({
     tooltip: {
       trigger: "item",
       formatter: p => {
@@ -1873,7 +3273,7 @@ function trainLossResidualOption() {
       { name: "\u6b8b\u5dee\u7ebf", type: "lines", coordinateSystem: "cartesian2d", data: residualLines, lineStyle: { color: "#ef4444", width: 2.4, opacity: 0.82 }, z: 5 },
       { name: "\u5f53\u524d\u89c2\u5bdf\u6837\u672c", type: "scatter", data: selectedPoints, symbolSize: 13, itemStyle: { color: "#f59e0b", borderColor: "#fff", borderWidth: 2 }, z: 6 }
     ]
-  };
+  }, axisRange);
 }
 
 function trainLossOverallOption() {
@@ -1995,7 +3395,7 @@ async function renderTrainFrame(index) {
         const ch = charts.get(chartId) || initChart(chartId);
         const meta = trainChartMeta(view);
         const option = trainChartOption(meta, currentFrame, trainChartDataCache[view]);
-        if (option) ch.setOption(option, meta?.renderer !== "loss_surface_3d");
+        if (option) trainSetChartOption(ch, view, option, meta?.renderer !== "loss_surface_3d");
       });
     },
   });
@@ -2069,8 +3469,9 @@ function renderTrainCompareMain() {
     if (!config) return;
     const chartId = `chart_${view}`;
     const ch = charts.get(chartId) || initChart(chartId);
-    ch.setOption(trainCompareScatterOption(config.mode, currentFrame), true);
+    trainSetChartOption(ch, view, trainCompareScatterOption(config.mode, currentFrame), true);
   });
+  updateTrainPreprocessEffectGuide();
 }
 
 function ensureTrainCompareGrid() {
@@ -2107,9 +3508,10 @@ function trainCompareScatterOption(mode, frameIndex) {
   const data = mode === "raw" ? trainCompareData.raw : trainCompareData.standard;
   const frame = trainCompareFrame(mode, frameIndex);
   const points = data.scatter.x.map((x, i) => [x, data.scatter.y[i]]);
-  const currentLine = data.line_x.map(x => [x, frame.w * x + frame.b]);
-  const bestLine = data.line_x.map(x => [x, data.best.w * x + data.best.b]);
-  return {
+  const axisRange = trainFixedZeroAxisRange(data);
+  const currentLine = lineForParamsInRange(axisRange, frame.w, frame.b);
+  const bestLine = lineForParamsInRange(axisRange, data.best.w, data.best.b);
+  return applyFixedZeroAxis({
     tooltip: { trigger: "item" },
     legend: { top: 12 },
     grid: { left: 58, right: 24, top: 56, bottom: 48 },
@@ -2124,7 +3526,7 @@ function trainCompareScatterOption(mode, frameIndex) {
       { name: "\u5f53\u524d\u56de\u5f52\u7ebf", type: "line", data: currentLine, showSymbol: false, lineStyle: { color: "#d9354f", width: 3 } },
       { name: "\u6700\u4f18\u53c2\u8003\u7ebf", type: "line", data: bestLine, showSymbol: false, lineStyle: { color: "#0f9f78", width: 2.6, type: "dashed" } }
     ]
-  };
+  }, axisRange);
 }
 
 function trainChartOption(meta, frameIndex, chartData = null) {
@@ -2218,3 +3620,813 @@ function trainCompareAutoStopReason(frameIndex) {
   if (Number(rawFrame.loss) > 1e12 || Number(stdFrame.loss) > 1e12) return "Loss \u660e\u663e\u53d1\u6563\uff0c\u5df2\u505c\u6b62\u6f14\u793a\u3002";
   return "";
 }
+
+/* ==========================================================================
+   朴素贝叶斯模型训练与评估模块 (Naive Bayes Model Training)
+   ========================================================================== */
+
+let nbTrainData = null;       // 缓存训练完成的模型结果
+let nbProbeData = null;       // 缓存单词探针查询结果
+let nbPredictData = null;     // 缓存测试样本决策推演结果
+let nbLoading = false;
+let activeNbTrainStep = "nb_train";
+let nbTrainProgressStep = "nb_train";
+let nbCharts = [];
+
+function clearNbCharts() {
+  nbCharts.forEach(ch => {
+    try { ch.dispose(); } catch(e) {}
+  });
+  nbCharts = [];
+}
+
+function ensureNbTrainTopFlow() {
+  const slot = $("pageTopSlot");
+  if (!slot) return null;
+  slot.classList.add("has-content");
+  if (!$("nbTrainFlow")) {
+    slot.innerHTML = `<div class="preprocess-flow" id="nbTrainFlow"></div>`;
+  }
+  return $("nbTrainFlow");
+}
+
+function renderNbTrainFlow() {
+  const flow = ensureNbTrainTopFlow();
+  if (!flow) return;
+  const progressIndex = NB_TRAIN_STEPS.findIndex(s => s.id === nbTrainProgressStep);
+  flow.innerHTML = NB_TRAIN_STEPS.map((step, index) => {
+    const classes = ["flow-step"];
+    if (step.id === activeNbTrainStep) classes.push("active");
+    else if (index <= progressIndex) classes.push("done");
+    return `<button class="${classes.join(" ")}" type="button" data-nb-step="${step.id}"><span>${step.no}</span><strong>${step.label}</strong></button>`;
+  }).join("");
+}
+
+function bindNbTrainFlow() {
+  const flow = ensureNbTrainTopFlow();
+  if (!flow || flow.dataset.nbBound === "true") return;
+  flow.dataset.nbBound = "true";
+  flow.addEventListener("click", async event => {
+    const btn = event.target.closest("[data-nb-step]");
+    if (!btn) return;
+    const previousStep = activeNbTrainStep;
+    activeNbTrainStep = btn.dataset.nbStep;
+    viewStateStore.activeNbTrainStep = activeNbTrainStep;
+    
+    // 只允许跳往已解锁（或已经过的）步骤
+    const pIdx = NB_TRAIN_STEPS.findIndex(s => s.id === nbTrainProgressStep);
+    const cIdx = NB_TRAIN_STEPS.findIndex(s => s.id === activeNbTrainStep);
+    if (cIdx > pIdx && nbTrainData) {
+      nbTrainProgressStep = activeNbTrainStep;
+      viewStateStore.nbTrainProgressStep = nbTrainProgressStep;
+    } else if (cIdx > pIdx && !nbTrainData) {
+      // 未训练模型，不允许跳步，恢复原状态
+      activeNbTrainStep = previousStep;
+      return;
+    }
+    await renderNbTrainCurrentStep();
+  });
+}
+
+const NB_TRAIN_STEPS = [
+  { id: "nb_train", no: 1, label: "配置与训练" },
+  { id: "nb_prob", no: 2, label: "概率学习" },
+  { id: "nb_predict", no: 3, label: "决策推演" }
+];
+
+async function renderNbTrainShell() {
+  document.querySelector(".shell").classList.remove("theory");
+  ensureNbTrainTopFlow();
+  renderNbTrainFlow();
+  bindNbTrainFlow();
+
+  $("main").innerHTML = `<div id="nbTrainContent" style="padding: 10px 18px 24px 18px; width: 100%; box-sizing: border-box; overflow-y: auto; height: 100%;"></div>`;
+  $("rightPanel").innerHTML = `<div id="nbTrainRightPanel"></div>`;
+
+  await renderNbTrainCurrentStep();
+}
+
+async function renderNbTrainCurrentStep() {
+  clearNbCharts();
+  renderNbTrainFlow();
+
+  const content = $("nbTrainContent");
+  if (!content) return;
+
+  // 1. 安全过滤：如果跳到第2、3步，但模型还未训练，强制拦截并渲染警告
+  if (!nbTrainData && activeNbTrainStep !== "nb_train") {
+    content.innerHTML = `
+      <section class="preprocess-prompt-card" style="padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #fff; border-radius: 8px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+        <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #495057;">请先训练模型</h3>
+        <p style="font-size: 13px; color: #868e96; max-width: 400px; margin: 0 0 20px 0; line-height: 1.5;">当前步骤依赖已训练的贝叶斯模型。请返回步骤 01 【配置与训练】 完成训练后再试。</p>
+        <button class="primary-btn" type="button" onclick="activeNbTrainStep = 'nb_train'; renderNbTrainCurrentStep();" style="margin: 0; padding: 8px 20px; font-size: 13px;">去配置并训练模型</button>
+      </section>
+    `;
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">操作提示</div>
+      <div class="control-card">
+        <p style="font-size: 13px; color: #868e96; line-height: 1.5; margin: 0;">当前步骤已锁。您需要先在第一步中点击开始训练以拟合模型，随后才可查询概率特征与进行推演。</p>
+      </div>
+    `;
+    return;
+  }
+
+  // 2. 根据步骤渲染不同主内容与右侧栏
+  if (activeNbTrainStep === "nb_train") {
+    if (!nbTrainData) {
+      content.innerHTML = `
+        <section class="preprocess-prompt-card" style="padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #fff; border-radius: 8px;">
+          <div style="font-size: 48px; margin-bottom: 16px;">🤖</div>
+          <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #495057;">模型就绪，等待训练</h3>
+          <p style="font-size: 13px; color: #868e96; max-width: 400px; margin: 0 0 20px 0; line-height: 1.5;">请在右侧控制面板中选择算法类型，配置平滑系数，然后点击【开始训练】按钮。</p>
+        </section>
+      `;
+    } else {
+      content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+          <div class="mini-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px;">
+            <div class="mini-stat"><span>训练集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.train_accuracy * 100).toFixed(2)}%</strong></div>
+            <div class="mini-stat"><span>测试集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.test_accuracy * 100).toFixed(2)}%</strong></div>
+            <div class="mini-stat"><span>训练样本量</span><strong>${nbTrainData.train_count}</strong></div>
+            <div class="mini-stat"><span>测试样本量</span><strong>${nbTrainData.test_count}</strong></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px;">
+            <section class="chart-card">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">各类别评估指标对比</div>
+                  <div class="chart-sub">测试集上的精确率 (Precision)、召回率 (Recall)、F1 值分类报告</div>
+                </div>
+              </div>
+              <div class="chart" id="nbMetricsChart" style="height: 300px; min-height: 300px;"></div>
+            </section>
+            <section class="chart-card">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">模型配置与先验概率</div>
+                  <div class="chart-sub">算法参数及先验分布 P(Class) 对比</div>
+                </div>
+              </div>
+              <div style="padding: 0 18px 10px 18px;">
+                <div class="table-wrap" style="margin-bottom: 12px; background: transparent; border: none; padding: 0;">
+                  <table style="font-size:12px; width:100%; border-collapse: collapse;">
+                    <tbody>
+                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>算法类型:</strong></td><td style="color:#2b5c8f;">${nbTrainData.model_type}</td><td style="padding: 6px 0;"><strong>平滑系数 α:</strong></td><td>${nbTrainData.alpha}</td></tr>
+                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>特征词总数:</strong></td><td>${nbTrainData.n_features}</td><td style="padding: 6px 0;"><strong>类别数量:</strong></td><td>${nbTrainData.n_classes}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="chart" id="nbPriorsChart" style="height: 150px; min-height: 150px;"></div>
+            </section>
+          </div>
+        </div>
+      `;
+      // 渲染 Step 01 图表
+      renderNbTrainCharts();
+    }
+    
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">控制面板</div>
+      <div class="control-card">
+        <h3>算法参数配置</h3>
+        <div class="control-group">
+          <label class="control-label" for="nbModelType">算法类型</label>
+          <select id="nbModelType" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ced4da; font-size:13px; margin-bottom:12px;">
+            <option value="MultinomialNB" ${nbTrainData?.model_type === "MultinomialNB" ? "selected" : ""}>多项式贝叶斯 (MultinomialNB)</option>
+            <option value="ComplementNB" ${nbTrainData?.model_type === "ComplementNB" ? "selected" : ""}>补集贝叶斯 (ComplementNB)</option>
+          </select>
+          
+          <label class="control-label" for="nbAlpha" style="margin-top:12px; display:block; font-size:13px; font-weight:500;">
+            平滑系数 (α): <span id="nbAlphaVal" style="font-weight:bold; color:#2b5c8f;">${nbTrainData?.alpha ?? "1.0"}</span>
+          </label>
+          <input type="range" id="nbAlpha" min="0.0" max="10.0" step="0.1" value="${nbTrainData?.alpha ?? "1.0"}" style="width:100%; cursor:pointer;" oninput="$('nbAlphaVal').textContent = Number(this.value).toFixed(1)">
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <button class="primary-btn" id="nbStartTrainBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:14px; font-weight:600;">开始训练</button>
+        </div>
+        <div class="status-line" id="nbTrainStatus" style="margin-top: 12px; font-size: 12px; color: #868e96;">就绪，等待训练。</div>
+      </div>
+    `;
+    
+    // 绑定事件
+    $("nbStartTrainBtn").addEventListener("click", runNbTrain);
+
+  } else if (activeNbTrainStep === "nb_prob") {
+    content.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">双类别特征词云图</div>
+              <div class="chart-sub">词的大小代表该词在所属类别的权重得分 (MultinomialNB: P(w|c), ComplementNB: 1/P(w|~c))，支持点击查概率。</div>
+            </div>
+          </div>
+          <div id="nbWordCloudsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 10px 18px 18px 18px;">
+            <div>
+              <h4 style="margin: 0 0 10px 0; text-align: center; color: #2b5c8f; font-size: 14px; font-weight:600;" id="nbCloudTitle1">类别 1</h4>
+              <div id="nbWordCloud1" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+            </div>
+            <div>
+              <h4 style="margin: 0 0 10px 0; text-align: center; color: #e67e22; font-size: 14px; font-weight:600;" id="nbCloudTitle2">类别 2</h4>
+              <div id="nbWordCloud2" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+            </div>
+          </div>
+        </section>
+        
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">条件概率特征单词探针</div>
+              <div class="chart-sub">展示所查询特征词在各个类别下的条件概率 P(word|class)</div>
+            </div>
+          </div>
+          <div style="padding: 10px 18px 18px 18px;">
+            <div id="nbProbeWarningContainer"></div>
+            <div id="nbProbeChartsRow" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; align-items: center;">
+              <div class="chart" id="nbProbeChart" style="height: 240px; min-height: 240px;"></div>
+              <div style="background: #f8f9fa; padding: 18px; border-radius: 6px; border: 1px solid #e9ecef; min-height: 180px; box-sizing: border-box; display:flex; flex-direction:column; justify-content:center;">
+                <h5 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600; color: #343a40; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">探针数值详情</h5>
+                <div id="nbProbeStats" style="font-size: 12px; line-height: 1.6; color: #495057;">
+                  <span style="color:#868e96;">请在右侧输入框搜索单词，或点击词云图中的单词。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    // 渲染词云
+    renderNbWordClouds();
+
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">条件概率探针</div>
+      <div class="control-card">
+        <h3>特征词检索</h3>
+        <div class="control-group">
+          <label class="control-label" for="nbWordProbeInput">输入查询词</label>
+          <input type="text" id="nbWordProbeInput" placeholder="输入单词，例如 space, engine..." style="width:100%; padding:8px; border-radius:4px; border:1px solid #ced4da; font-size:13px; margin-bottom:12px;" value="${nbProbeData?.word || ""}">
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="primary-btn" id="nbWordProbeBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">开始查询</button>
+        </div>
+        <div class="status-line" id="nbProbeStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">提示：点击词云中的词，或手动输入单词并查询。</div>
+      </div>
+    `;
+
+    // 绑定事件
+    $("nbWordProbeBtn").addEventListener("click", () => {
+      const w = $("nbWordProbeInput").value.trim();
+      runNbWordProbe(w);
+    });
+
+    // 如果之前有探针数据，重绘探针
+    if (nbProbeData) {
+      renderNbProbeChart();
+    }
+
+  } else if (activeNbTrainStep === "nb_predict") {
+    content.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">测试样本原文</div>
+              <div class="chart-sub">当前抽取的测试文档内容预览（过滤不相关换行，高亮展示预测决策贡献词）</div>
+            </div>
+          </div>
+          <div style="padding: 10px 18px 18px 18px;">
+            <div id="nbSampleText" style="background:#f8f9fa; border:1px solid #e9ecef; padding:15px; border-radius:6px; font-family:monospace; max-height:160px; overflow-y:auto; font-size:13px; line-height:1.6; color:#495057; white-space: pre-wrap; word-break: break-all; min-height: 80px;">
+              ${nbPredictData ? nbHighlightText(nbPredictData.text_preview, nbPredictData.top_words) : `<span style="color:#868e96;">等待抽取测试样本，请点击右侧面板按钮。</span>`}
+            </div>
+          </div>
+        </section>
+        
+        <div style="display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 16px;">
+          <section class="chart-card">
+            <div class="chart-head">
+              <div>
+                <div class="chart-title">分类预测概率 P(Class|Doc)</div>
+                <div class="chart-sub">通过后验得分平移进行 Softmax 归一化得到的置信度占比</div>
+              </div>
+            </div>
+            <div class="chart" id="nbPosteriorChart" style="height: 280px; min-height: 280px;"></div>
+          </section>
+          
+          <section class="chart-card">
+            <div class="chart-head">
+              <div>
+                <div class="chart-title">决策数学推导拆解</div>
+                <div class="chart-sub">展示 log P(c|d) = log P(c) + Σ log P(w|c) 贡献排名靠前的决策特征词</div>
+              </div>
+            </div>
+            <div style="padding: 10px 18px 18px 18px;">
+              <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
+                ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
+              </div>
+              <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
+              <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
+                <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
+                  <thead>
+                    <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
+                      <th style="padding: 6px;">单词</th>
+                      <th style="padding: 6px;">样本内频次</th>
+                      <th style="padding: 6px;" id="nbTableHeaderClass1">Class 1 log P</th>
+                      <th style="padding: 6px;" id="nbTableHeaderClass2">Class 2 log P</th>
+                      <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    `;
+
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">决策推演控制</div>
+      <div class="control-card">
+        <h3>样本检验与推演</h3>
+        <div style="margin-top: 10px;">
+          <button class="primary-btn" id="nbRandomSampleBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">随机抽取测试样本</button>
+        </div>
+        
+        <div class="mini-stats" style="margin-top: 18px; display: block; border: 1px solid #f1f3f5; padding: 12px; border-radius: 6px; background:#fafafa;">
+          <h4 style="font-size: 12px; margin: 0 0 10px 0; color: #495057; font-weight:600; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">判定状态</h4>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>样本索引:</span>
+            <strong id="nbSampleIdx">${nbPredictData ? nbPredictData.sample_index + 1 : "--"} / ${nbPredictData ? nbPredictData.total_samples : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>真实分类:</span>
+            <strong id="nbTrueLabel" style="color: #2b5c8f;">${nbPredictData ? nbPredictData.true_label : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>预测分类:</span>
+            <strong id="nbPredLabel" style="color: #e67e22;">${nbPredictData ? nbPredictData.predicted_label : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0; font-size:12px; align-items: center;">
+            <span>推演结果:</span>
+            <span id="nbCorrectBadge">${nbPredictData ? (nbPredictData.correct ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`) : "--"}</span>
+          </div>
+        </div>
+        
+        <div class="status-line" id="nbPredictStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">就绪。</div>
+      </div>
+    `;
+
+    // 绑定事件
+    $("nbRandomSampleBtn").addEventListener("click", runNbPredict);
+
+    // 如果之前有预测数据，重绘图表
+    if (nbPredictData) {
+      renderNbPosteriorChart();
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 动作接口调用与响应
+// --------------------------------------------------------------------------
+
+async function runNbTrain() {
+  const modelType = $("nbModelType").value;
+  const alpha = parseFloat($("nbAlpha").value);
+  const status = $("nbTrainStatus");
+  
+  if (status) status.textContent = "正在训练贝叶斯分类器...";
+  nbLoading = true;
+  
+  try {
+    const res = await runAction("prepare_train", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
+      model_type: modelType,
+      alpha: alpha
+    });
+    
+    nbTrainData = res;
+    nbTrainProgressStep = "nb_train";
+    
+    // 更新全局上下文 ID
+    if (res.context_id) {
+      currentContextId = res.context_id;
+    }
+    
+    if (status) status.textContent = "模型训练完成。";
+    
+    // 重绘
+    await renderNbTrainCurrentStep();
+    
+  } catch (err) {
+    console.error("Bayes train error:", err);
+    if (status) status.textContent = `训练失败: ${err.message}`;
+    showToast?.(`训练失败: ${err.message}`, "error");
+  } finally {
+    nbLoading = false;
+  }
+}
+
+async function runNbWordProbe(word) {
+  if (!word) return;
+  const status = $("nbProbeStatus");
+  if (status) status.textContent = `正在查询单词 "${word}" 概率...`;
+  
+  try {
+    const res = await runAction("get_word_prob", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
+      word: word
+    });
+    
+    nbProbeData = res;
+    
+    if (status) status.textContent = `查询单词 "${word}" 完成。`;
+    
+    // 渲染探针警告与图表
+    const warningContainer = $("nbProbeWarningContainer");
+    const statsContainer = $("nbProbeStats");
+    
+    if (res.is_unseen) {
+      if (warningContainer) {
+        warningContainer.innerHTML = `
+          <div class="alert alert-warning" style="background: #fff3cd; color: #856404; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 5px solid #ffc107; font-size:12px;">
+            ⚠️ 单词 <strong>"${escapeHtml(res.word)}"</strong> 未进入当前分类特征词典（属于停用词或词频未达标被截断），所有类别下的条件概率均记为 0。
+          </div>
+        `;
+      }
+      if (statsContainer) {
+        statsContainer.innerHTML = `
+          <span style="color:#d9534f; font-weight:bold;">未登录词 / 停用词</span><br>
+          该词在预处理分词过滤阶段已被筛除，无法计算分类似然概率贡献。
+        `;
+      }
+    } else {
+      if (warningContainer) warningContainer.innerHTML = "";
+      if (statsContainer) {
+        let rowsHtml = "";
+        for (const [cName, prob] of Object.entries(res.probs)) {
+          const logProb = res.log_probs[cName];
+          rowsHtml += `
+            <div style="margin-bottom:8px;">
+              <strong>${escapeHtml(cName)}</strong><br>
+              条件概率 P(w|c): <span style="color:#2b5c8f; font-weight:bold;">${prob.toExponential(4)}</span><br>
+              对数似然 log P(w|c): <span style="color:#e67e22; font-weight:bold;">${logProb.toFixed(4)}</span>
+            </div>
+          `;
+        }
+        statsContainer.innerHTML = rowsHtml;
+      }
+    }
+    
+    renderNbProbeChart();
+    
+  } catch (err) {
+    console.error("Word probe error:", err);
+    if (status) status.textContent = `查询失败: ${err.message}`;
+  }
+}
+
+async function runNbPredict() {
+  const status = $("nbPredictStatus");
+  if (status) status.textContent = "正在随机抽取并分析测试样本...";
+  
+  try {
+    const res = await runAction("predict", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups"
+    });
+    
+    nbPredictData = res;
+    if (status) status.textContent = "抽取与后验概率计算完成。";
+    
+    // 更新控制面板状态
+    $("nbSampleIdx").textContent = `${res.sample_index + 1} / ${res.total_samples}`;
+    $("nbTrueLabel").textContent = res.true_label;
+    $("nbPredLabel").textContent = res.predicted_label;
+    $("nbCorrectBadge").innerHTML = res.correct 
+      ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` 
+      : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`;
+      
+    // 更新左侧主文本预览
+    $("nbSampleText").innerHTML = nbHighlightText(res.text_preview, res.top_words);
+    
+    // 更新数学拆解公式
+    $("nbDeductionFormula").innerHTML = nbGetFormulaHtml(res);
+    
+    // 更新表格行
+    $("nbContribTable").querySelector("tbody").innerHTML = nbGetContribTableRowsHtml(res);
+    
+    // 渲染后验得分概率柱状图
+    renderNbPosteriorChart();
+    
+  } catch (err) {
+    console.error("Bayes predict error:", err);
+    if (status) status.textContent = `抽取失败: ${err.message}`;
+  }
+}
+
+// --------------------------------------------------------------------------
+// 局部 HTML 文字修饰与高亮渲染函数
+// --------------------------------------------------------------------------
+
+function nbHighlightText(text, topWords) {
+  if (!text) return "";
+  let html = escapeHtml(text);
+  
+  // 对 Top-5 贡献词在文本预览中进行黄色底色高亮展示，突出重要特征
+  topWords.forEach(item => {
+    const word = item.word;
+    const regex = new RegExp(`\\b(${word})\\b`, "gi");
+    html = html.replace(regex, `<mark style="background:#fff3cd; color:#856404; font-weight:bold; padding:0 2px; border-radius:2px;">$1</mark>`);
+  });
+  
+  return html;
+}
+
+function nbGetFormulaHtml(data) {
+  const keys = Object.keys(data.raw_scores);
+  let html = `<strong>决策公式推导 (后验对数得分连加):</strong><br>`;
+  keys.forEach(name => {
+    const prior = data.prior_scores[name].toFixed(4);
+    const like = data.likelihood_scores[name].toFixed(4);
+    const total = data.raw_scores[name].toFixed(4);
+    const boldStyle = name === data.predicted_label ? "font-weight:bold; color:#d9534f;" : "";
+    html += `<div style="margin-top: 4px; ${boldStyle}">log P(${escapeHtml(name)}|doc) = log P(prior) + log P(likelihood) = ${prior} + (${like}) = <strong>${total}</strong></div>`;
+  });
+  return html;
+}
+
+function nbGetContribTableRowsHtml(data) {
+  if (!data.top_words || !data.top_words.length) {
+    return `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">没有提取到特征贡献词。</td></tr>`;
+  }
+  const keys = Object.keys(data.raw_scores);
+  return data.top_words.map(item => {
+    const c1 = item.contributions[keys[0]].toFixed(4);
+    const c2 = item.contributions[keys[1]].toFixed(4);
+    const diff = item.diff.toFixed(4);
+    return `
+      <tr style="border-bottom: 1px solid #f1f3f5;">
+        <td style="padding: 6px; font-weight:bold; color:#2b5c8f;">${escapeHtml(item.word)}</td>
+        <td style="padding: 6px;">${item.val}</td>
+        <td style="padding: 6px; color:#666;">${c1}</td>
+        <td style="padding: 6px; color:#666;">${c2}</td>
+        <td style="padding: 6px; text-align:right; font-weight:bold; color:#1e824c;">${diff}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// --------------------------------------------------------------------------
+// ECharts 绘图核心渲染
+// --------------------------------------------------------------------------
+
+function renderNbTrainCharts() {
+  if (!nbTrainData) return;
+  clearNbCharts();
+
+  // 1. 绘制评估分类报告
+  const metricsDom = $("nbMetricsChart");
+  if (metricsDom) {
+    const ch = echarts.init(metricsDom);
+    const targetNames = nbTrainData.target_names;
+    
+    const precisions = targetNames.map(name => nbTrainData.class_report[name].precision);
+    const recalls = targetNames.map(name => nbTrainData.class_report[name].recall);
+    const f1s = targetNames.map(name => nbTrainData.class_report[name].f1);
+
+    const option = {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: ['精确率 (Precision)', '召回率 (Recall)', 'F1 值 (F1-score)'], bottom: 0 },
+      grid: { left: '3%', right: '4%', bottom: '10%', top: '8%', containLabel: true },
+      xAxis: { type: 'category', data: targetNames },
+      yAxis: { type: 'value', min: 0, max: 1.0, interval: 0.2 },
+      color: ['#4f86c6', '#1e824c', '#e67e22'],
+      series: [
+        { name: '精确率 (Precision)', type: 'bar', data: precisions },
+        { name: '召回率 (Recall)', type: 'bar', data: recalls },
+        { name: 'F1 值 (F1-score)', type: 'bar', data: f1s }
+      ]
+    };
+    ch.setOption(option);
+    nbCharts.push(ch);
+  }
+
+  // 2. 绘制先验分布
+  const priorsDom = $("nbPriorsChart");
+  if (priorsDom) {
+    const ch = echarts.init(priorsDom);
+    const targetNames = nbTrainData.target_names;
+    const values = targetNames.map(name => nbTrainData.prior_probs[name]);
+
+    const option = {
+      tooltip: { trigger: 'axis', formatter: '{b}: {c}' },
+      grid: { left: '3%', right: '8%', bottom: '5%', top: '5%', containLabel: true },
+      xAxis: { type: 'value', min: 0, max: 1.0 },
+      yAxis: { type: 'category', data: targetNames },
+      color: ['#2b5c8f'],
+      series: [
+        {
+          type: 'bar',
+          data: values,
+          label: {
+            show: true,
+            position: 'right',
+            formatter: (params) => params.value.toFixed(4)
+          }
+        }
+      ]
+    };
+    ch.setOption(option);
+    nbCharts.push(ch);
+  }
+}
+
+function renderNbProbeChart() {
+  const probeDom = $("nbProbeChart");
+  if (!probeDom || !nbProbeData) return;
+  
+  // 查找原有的该 DOM 实例，重新 init
+  const oldCh = echarts.getInstanceByDom(probeDom);
+  if (oldCh) oldCh.dispose();
+  
+  const ch = echarts.init(probeDom);
+  const targetNames = Object.keys(nbProbeData.probs);
+  const values = targetNames.map(name => nbProbeData.probs[name]);
+
+  const option = {
+    title: { 
+      text: `单词探针: "${nbProbeData.word}"`, 
+      left: 'center', 
+      textStyle: { fontSize: 13, fontWeight: 'bold', color: '#495057' } 
+    },
+    tooltip: { 
+      trigger: 'axis', 
+      formatter: (params) => {
+        const item = params[0];
+        return `${item.name}<br>条件概率 P(w|c): <strong>${item.value.toExponential(4)}</strong>`;
+      } 
+    },
+    grid: { left: '3%', right: '4%', bottom: '8%', top: '20%', containLabel: true },
+    xAxis: { type: 'category', data: targetNames },
+    yAxis: { 
+      type: 'value',
+      name: 'P(word | class)',
+      nameTextStyle: { fontSize: 10 }
+    },
+    color: ['#2b5c8f'],
+    series: [
+      {
+        type: 'bar',
+        data: values,
+        barMaxWidth: 60,
+        label: {
+          show: true,
+          position: 'top',
+          formatter: (params) => params.value.toExponential(2)
+        }
+      }
+    ]
+  };
+  ch.setOption(option);
+  nbCharts.push(ch);
+}
+
+function renderNbPosteriorChart() {
+  const postDom = $("nbPosteriorChart");
+  if (!postDom || !nbPredictData) return;
+  
+  const oldCh = echarts.getInstanceByDom(postDom);
+  if (oldCh) oldCh.dispose();
+  
+  const ch = echarts.init(postDom);
+  const targetNames = Object.keys(nbPredictData.probs);
+  const values = targetNames.map(name => nbPredictData.probs[name] * 100);
+
+  // 找出概率最高的类别作为预测类别并高亮
+  const predName = nbPredictData.predicted_label;
+  
+  const option = {
+    tooltip: { 
+      trigger: 'axis', 
+      formatter: '{b}: {c}%' 
+    },
+    grid: { left: '3%', right: '8%', bottom: '5%', top: '10%', containLabel: true },
+    xAxis: { 
+      type: 'value', 
+      min: 0, 
+      max: 100,
+      axisLabel: { formatter: '{value}%' }
+    },
+    yAxis: { type: 'category', data: targetNames },
+    series: [
+      {
+        type: 'bar',
+        data: values.map((val, idx) => {
+          const isPred = targetNames[idx] === predName;
+          return {
+            value: val,
+            itemStyle: {
+              color: isPred ? '#e74c3c' : '#4f86c6' // 高亮预测类别用红橙色，其余用经典蓝
+            }
+          };
+        }),
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{c}%'
+        }
+      }
+    ]
+  };
+  ch.setOption(option);
+  nbCharts.push(ch);
+}
+
+// --------------------------------------------------------------------------
+// 双词云图自适应 HTML-CSS 排列生成器
+// --------------------------------------------------------------------------
+
+function renderNbWordClouds() {
+  if (!nbTrainData) return;
+  const targetNames = nbTrainData.target_names;
+  
+  $("nbCloudTitle1").textContent = `新闻版块：${targetNames[0]}`;
+  $("nbCloudTitle2").textContent = `新闻版块：${targetNames[1]}`;
+  
+  generateHtmlWordCloud("nbWordCloud1", nbTrainData.top_words_per_class[targetNames[0]]);
+  generateHtmlWordCloud("nbWordCloud2", nbTrainData.top_words_per_class[targetNames[1]]);
+}
+
+function generateHtmlWordCloud(containerId, words) {
+  const container = $(containerId);
+  if (!container) return;
+  container.innerHTML = "";
+  
+  if (!words || !words.length) {
+    container.innerHTML = `<span style="color:#868e96; font-size:12px;">无词表特征数据。</span>`;
+    return;
+  }
+
+  // 稍微混洗下使得排列看起来更自然随机
+  const shuffled = [...words].sort(() => Math.random() - 0.5);
+  
+  // 品牌色调和谐色彩调色板 (蓝色、蓝灰色、中性偏暗高雅色系)
+  const colors = ["#2b5c8f", "#4a90e2", "#1b3a5b", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#2980b9", "#2c3e50", "#7f8c8d"];
+  
+  shuffled.forEach(w => {
+    const el = document.createElement("span");
+    el.textContent = w.word;
+    
+    // 直接使用后端已经基于权重算好分配的 score 作字号大小
+    el.style.fontSize = `${w.score}px`;
+    el.style.fontWeight = w.score > 28 ? "bold" : "normal";
+    el.style.color = colors[Math.floor(Math.random() * colors.length)];
+    el.style.cursor = "pointer";
+    el.style.display = "inline-block";
+    el.style.transition = "transform 0.15s ease, text-shadow 0.15s ease, background 0.15s ease";
+    el.style.padding = "2px 5px";
+    el.style.borderRadius = "4px";
+    el.style.margin = "2px";
+    el.style.lineHeight = "1";
+    
+    // 鼠标悬停动画微交互
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "scale(1.2) translateY(-2px)";
+      el.style.textShadow = "0 3px 6px rgba(43,92,143,0.25)";
+      el.style.background = "#eef4fa";
+    });
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "scale(1) translateY(0)";
+      el.style.textShadow = "none";
+      el.style.background = "transparent";
+    });
+    
+    // 鼠标点击更新探针并触发查询
+    el.addEventListener("click", () => {
+      const inp = $("nbWordProbeInput");
+      if (inp) {
+        inp.value = w.word;
+        runNbWordProbe(w.word);
+      }
+    });
+    
+    container.appendChild(el);
+  });
+}
+
+// 自动响应窗口大小变动重绘
+window.addEventListener("resize", () => {
+  nbCharts.forEach(ch => {
+    try { ch.resize(); } catch(e) {}
+  });
+});
+

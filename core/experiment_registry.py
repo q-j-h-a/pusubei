@@ -1,13 +1,19 @@
 from core.registry import DEFAULT_MODEL_ID, discover_models, get_model
 
 
-DEFAULT_EXPERIMENT_ID = "simple_linear_regression"
+DEFAULT_EXPERIMENT_ID = "naive_bayes"
 
 EXPERIMENTS = {
     "simple_linear_regression": {
         "id": "simple_linear_regression",
         "title": "简单线性回归",
-        "model": DEFAULT_MODEL_ID,
+        "model": "simple_linear_regression",
+        "default_page": "preprocess",
+    },
+    "naive_bayes": {
+        "id": "naive_bayes",
+        "title": "朴素贝叶斯分类",
+        "model": "naive_bayes",
         "default_page": "preprocess",
     }
 }

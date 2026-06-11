@@ -4,3 +4,4 @@ instance/
 .venv-melotts/
 .venv-cosyvoice/
 .cosyvoice/
+config.local.json

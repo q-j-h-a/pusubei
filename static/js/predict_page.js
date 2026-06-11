@@ -2,6 +2,14 @@
 
 let predictRawScatterData = null;
 let predictRawScatterKey = "";
+const PREDICT_GUIDE_ID = "predict";
+const PREDICT_GUIDE_STEPS = new Set([
+  "predict_model",
+  "predict_input",
+  "predict_run",
+  "predict_charts",
+  "predict_calc",
+]);
 
 async function renderPredictShell() {
   predictPageSchema = predictPageSchema || await loadPanelSchema("predict", {
@@ -18,7 +26,10 @@ async function renderPredictShell() {
   bindGuideControls?.();
   bindPredictCodeButtons();
   syncPredictPanelWithTrainModel();
-  $("predictRun")?.addEventListener("click", loadPrediction);
+  $("predictRun")?.addEventListener("click", async () => {
+    await loadPrediction();
+    advancePredictGuideOnRunClick();
+  });
   $("predictInputMode")?.addEventListener("change", persistPredictFormState);
   $("predictInput")?.addEventListener("input", persistPredictFormState);
   $("predictInput")?.addEventListener("keydown", event => {
@@ -38,7 +49,7 @@ function renderPredictPanel() {
         <div class="mini-stat"><span>\u9884\u6d4b MEDV</span><strong id="predictValue">--</strong></div>
         <div class="mini-stat"><span>\u6a21\u578b\u8f93\u5165 x</span><strong id="predictModelX">--</strong></div>
       </div>
-      <div class="control-group" aria-label="\u5f53\u524d\u6a21\u578b">
+      <div class="control-group predict-model-guide-target" aria-label="\u5f53\u524d\u6a21\u578b">
         <label class="control-label">\u5f53\u524d\u6a21\u578b</label>
         <div class="formula-box" id="predictModelStatus">\u8bf7\u5148\u5728\u201c\u6a21\u578b\u8bad\u7ec3\u201d\u9875\u5b8c\u6210\u4e00\u6b21\u8bad\u7ec3\u3002</div>
       </div>
@@ -49,7 +60,7 @@ function renderPredictPanel() {
         </select>
         <input id="predictStd" type="hidden" value="true">
       </div>
-      <div class="control-group" aria-label="\u8f93\u5165\u8bbe\u7f6e">
+      <div class="control-group predict-input-guide-target" aria-label="\u8f93\u5165\u8bbe\u7f6e">
         <div class="field-grid">
           <label class="control-label" for="predictInputMode">\u8f93\u5165\u7c7b\u578b
             <select id="predictInputMode">
@@ -62,7 +73,7 @@ function renderPredictPanel() {
           </label>
         </div>
       </div>
-      <div class="predict-actions">
+      <div class="predict-actions predict-run-guide-target">
         <button class="primary-btn" id="predictRun" type="button">\u5f00\u59cb\u9884\u6d4b</button>
         ${predictCodeButtonHtml()}
       </div>
@@ -89,6 +100,18 @@ function restorePredictFormState() {
   syncPredictPanelWithTrainModel();
 }
 
+function guideEnabledForPredict() {
+  const state = guidePageState(PREDICT_GUIDE_ID);
+  return guideGlobalEnabled() && state.enabled && !state.dismissed && !state.completed;
+}
+
+function ensurePredictGuideStep() {
+  const state = guidePageState(PREDICT_GUIDE_ID);
+  if (!PREDICT_GUIDE_STEPS.has(state.step)) {
+    setGuidePageState({ step: "predict_model" }, PREDICT_GUIDE_ID);
+  }
+}
+
 async function resetPredictionPendingState() {
   persistPredictFormState();
   predictData = null;
@@ -103,6 +126,241 @@ async function resetPredictionPendingState() {
     return;
   }
   await renderPredictBaseCharts();
+}
+
+function predictGuideSpec() {
+  const state = guidePageState(PREDICT_GUIDE_ID);
+  const step = state.step || "predict_model";
+  if (step === "predict_input") {
+    return {
+      step,
+      target: ".predict-input-guide-target",
+      title: "输入待预测特征值",
+      body: "这里可以选择原始特征值或标准特征值。选择原始值时，系统会先用训练时的均值和标准差把它换算为模型输入；本次默认使用原始值 6.5。",
+      action: "设为原始值 6.5",
+    };
+  }
+  if (step === "predict_run") {
+    return {
+      step,
+      target: "#predictRun",
+      title: "开始预测",
+      body: "请点击真实的“开始预测”按钮。页面只有在点击按钮或按 Enter 后，才会生成预测点、预测 MEDV 和计算过程。",
+      action: "",
+    };
+  }
+  if (step === "predict_charts") {
+    return {
+      step,
+      target: ".predict-chart-combo-target",
+      title: "观察预测结果位置",
+      body: "同时观察预测可视化和原始散点图。左图展示自定义参数模型在标准化空间中的预测点，右图展示反标准化后预测点落在原始数据空间的位置。",
+      action: "下一步",
+    };
+  }
+  if (step === "predict_calc") {
+    return {
+      step,
+      target: "#predictCalcCard",
+      title: "查看预测计算过程",
+      body: "最后查看输入值如何被标准化、如何代入 y = wx + b，以及预测值如何还原为原始 MEDV。预测结果来自这些明确计算步骤。",
+      action: "完成本步引导",
+    };
+  }
+  return {
+    step: "predict_model",
+    target: ".predict-model-guide-target",
+    title: "确认当前模型",
+    body: "先确认预测页正在使用哪个模型。这里显示的特征、w 和 b 来自上一节自定义参数训练得到的当前模型。",
+    action: "下一步",
+  };
+}
+
+function updatePredictGuide() {
+  requestAnimationFrame(() => {
+    if (currentPage !== "predict" || !guideEnabledForPredict()) {
+      closePredictGuide();
+      return;
+    }
+    ensurePredictGuideStep();
+    const spec = predictGuideSpec();
+    const target = spec.step === "predict_charts"
+      ? createPredictChartComboTarget()
+      : document.querySelector(spec.target);
+    if (!target) return;
+    renderPredictGuide(spec, target);
+  });
+}
+
+function schedulePredictGuideUpdate(delay = 120) {
+  clearTimeout(schedulePredictGuideUpdate.timer);
+  schedulePredictGuideUpdate.timer = setTimeout(() => {
+    updatePredictGuide();
+  }, delay);
+}
+
+function createPredictChartComboTarget() {
+  const cards = ["predict_standard", "predict_raw"]
+    .map(id => document.querySelector(`[data-chart-card="${id}"]`))
+    .filter(Boolean);
+  if (cards.length !== 2) return null;
+  let target = document.querySelector(".predict-chart-combo-target");
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "predict-chart-combo-target";
+    document.body.appendChild(target);
+  }
+  syncPredictChartComboTarget(target, cards);
+  return target;
+}
+
+function syncPredictChartComboTarget(target, cards) {
+  if (!target || !cards?.length) return;
+  const rects = cards.map(card => card.getBoundingClientRect());
+  const left = Math.min(...rects.map(rect => rect.left));
+  const top = Math.min(...rects.map(rect => rect.top));
+  const right = Math.max(...rects.map(rect => rect.right));
+  const bottom = Math.max(...rects.map(rect => rect.bottom));
+  target.style.position = "fixed";
+  target.style.left = `${left}px`;
+  target.style.top = `${top}px`;
+  target.style.width = `${right - left}px`;
+  target.style.height = `${bottom - top}px`;
+  target.style.pointerEvents = "none";
+  target.style.borderRadius = "14px";
+}
+
+function highlightPredictChartCards() {
+  ["predict_standard", "predict_raw"].forEach(id => {
+    const card = document.querySelector(`[data-chart-card="${id}"]`);
+    const item = card?.closest(".grid-stack-item");
+    item?.classList.add("guide-lift");
+    card?.classList.add("guide-highlight", "guide-highlight-large");
+  });
+}
+
+function scrollPredictChartsIntoView() {
+  const cards = ["predict_standard", "predict_raw"]
+    .map(id => document.querySelector(`[data-chart-card="${id}"]`))
+    .filter(Boolean);
+  const main = $("main");
+  if (cards.length !== 2 || !main) return;
+  const rects = cards.map(card => card.getBoundingClientRect());
+  const mainRect = main.getBoundingClientRect();
+  const top = Math.min(...rects.map(rect => rect.top));
+  const bottom = Math.max(...rects.map(rect => rect.bottom));
+  const targetHeight = bottom - top;
+  const padding = 24;
+  const availableHeight = mainRect.height - padding * 2;
+  const targetTop = targetHeight <= availableHeight
+    ? mainRect.top + padding + (availableHeight - targetHeight) / 2
+    : mainRect.top + padding;
+  main.scrollTop += top - targetTop;
+}
+
+function renderPredictGuide(spec, target) {
+  closePredictGuide();
+  const isChartCombo = spec.step === "predict_charts";
+  const visualTarget = isChartCombo ? createPredictChartComboTarget() : target;
+  if (!visualTarget) return;
+  if (isChartCombo) {
+    scrollPredictChartsIntoView();
+    highlightPredictChartCards();
+    syncPredictChartComboTarget(
+      visualTarget,
+      ["predict_standard", "predict_raw"].map(id => document.querySelector(`[data-chart-card="${id}"]`)).filter(Boolean)
+    );
+  } else if (typeof scrollTrainGuideTargetIntoView === "function") {
+    scrollTrainGuideTargetIntoView(visualTarget);
+  } else {
+    visualTarget.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+  }
+  visualTarget.classList.add("guide-highlight");
+  const isLargeTarget = spec.step !== "predict_run";
+  if (isLargeTarget) visualTarget.classList.add("guide-highlight-large");
+  document.body.insertAdjacentHTML("beforeend", `
+    <div class="guide-backdrop" aria-hidden="true"></div>
+    <div class="guide-focus-ring" aria-hidden="true"></div>
+    <aside class="guide-popover" data-predict-guide-step="${escapeHtml(spec.step)}" role="dialog" aria-live="polite" aria-label="模型预测引导">
+      <button class="guide-close" type="button" aria-label="关闭当前页面引导" data-guide-close="true">x</button>
+      <div class="guide-kicker">学习引导</div>
+      <h3>${escapeHtml(spec.title)}</h3>
+      <p>${escapeHtml(spec.body)}</p>
+      <div class="guide-actions">
+        ${spec.action ? `<button class="primary-btn guide-next" type="button" data-guide-next="${escapeHtml(spec.step)}">${escapeHtml(spec.action)}</button>` : ""}
+        <button class="secondary-btn" type="button" data-guide-close="true">关闭引导</button>
+      </div>
+    </aside>`);
+
+  positionGuideFocusRing(visualTarget, isLargeTarget);
+  positionGuidePopover(visualTarget);
+  requestAnimationFrame(() => {
+    if (isChartCombo) {
+      syncPredictChartComboTarget(
+        visualTarget,
+        ["predict_standard", "predict_raw"].map(id => document.querySelector(`[data-chart-card="${id}"]`)).filter(Boolean)
+      );
+    }
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  });
+  setTimeout(() => {
+    positionGuideFocusRing(visualTarget, isLargeTarget);
+    positionGuidePopover(visualTarget);
+  }, 120);
+
+  const popover = document.querySelector(".guide-popover");
+  popover?.addEventListener("click", event => {
+    if (event.target.closest("[data-guide-close]")) {
+      setGuidePageState({ enabled: false, dismissed: true, completed: false, step: "predict_model" }, PREDICT_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closePredictGuide();
+      return;
+    }
+    const next = event.target.closest("[data-guide-next]");
+    if (!next) return;
+    const step = next.dataset.guideNext;
+    if (step === "predict_model") {
+      setGuidePageState({ step: "predict_input" }, PREDICT_GUIDE_ID);
+      updatePredictGuide();
+    } else if (step === "predict_input") {
+      setPredictRawInputDefault();
+      setGuidePageState({ step: "predict_run" }, PREDICT_GUIDE_ID);
+      schedulePredictGuideUpdate(120);
+    } else if (step === "predict_charts") {
+      setGuidePageState({ step: "predict_calc" }, PREDICT_GUIDE_ID);
+      schedulePredictGuideUpdate(80);
+    } else if (step === "predict_calc") {
+      setGuidePageState({ enabled: false, completed: true, dismissed: false, step: "predict_model" }, PREDICT_GUIDE_ID);
+      const pageToggle = $("guidePageToggle");
+      if (pageToggle) pageToggle.checked = false;
+      closePredictGuide();
+      openCurrentPracticeTestAfterGuide?.();
+    }
+  });
+}
+
+function setPredictRawInputDefault() {
+  const mode = $("predictInputMode");
+  const input = $("predictInput");
+  if (mode) mode.value = "raw";
+  if (input) input.value = "6.5";
+  persistPredictFormState();
+}
+
+function advancePredictGuideOnRunClick() {
+  if (currentPage !== "predict" || !guideEnabledForPredict()) return;
+  const state = guidePageState(PREDICT_GUIDE_ID);
+  if (state.step !== "predict_run" || !predictData) return;
+  setGuidePageState({ step: "predict_charts" }, PREDICT_GUIDE_ID);
+  schedulePredictGuideUpdate(160);
+}
+
+function closePredictGuide() {
+  clearTimeout(schedulePredictGuideUpdate.timer);
+  closePreprocessLoadGuide?.();
+  document.querySelector(".predict-chart-combo-target")?.remove();
 }
 
 function restorePredictionView() {
@@ -207,6 +465,7 @@ async function loadPrediction() {
 }
 
 function predictEmptyState() {
+  closePredictGuide();
   destroyDataGrid();
   disposeCharts();
   $("main").innerHTML = `
@@ -281,6 +540,7 @@ async function renderPredictBaseCharts() {
 
   updatePredictCalcCard();
   requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+  schedulePredictGuideUpdate(140);
 }
 
 function renderPredictCharts() {
@@ -322,6 +582,7 @@ function renderPredictCharts() {
 
   updatePredictCalcCard();
   requestAnimationFrame(() => charts.forEach(ch => ch.resize()));
+  schedulePredictGuideUpdate(140);
 }
 
 function ensurePredictGrid() {

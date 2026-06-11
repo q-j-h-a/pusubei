@@ -6,14 +6,15 @@
   <title>简单线性回归教学实验</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/chart_renderers.js?v=20260601_chart_dynamic01"></script>
-  <script src="/static/js/control_renderers.js"></script>
-  <script src="/static/js/view_renderers.js"></script>
+  <script src="static/js/api.js?v=20260603_subpath01"></script>
+  <script src="static/js/chart_renderers.js?v=20260601_chart_dynamic02"></script>
+  <script src="static/js/control_renderers.js"></script>
+  <script src="static/js/view_renderers.js"></script>
   <style>
     :root {
       --bg: #f7f8fb;
@@ -2061,6 +2062,90 @@
     .theory-deck-shell.is-editing .theory-drag-handle {
       pointer-events: auto;
     }
+    /* Hover outline indicator for components in editing mode to show selectability */
+    .theory-deck-shell.is-editing .theory-component:hover:not(.is-selected) {
+      outline: 1px solid rgba(37, 99, 235, 0.22) !important;
+      outline-offset: 4px !important;
+      border-radius: 6px !important;
+    }
+    /* Beautiful pill-shaped grab handle that uses Glassmorphism (frosted white and blur) */
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle {
+      background: rgba(255, 255, 255, 0.82) !important;
+      backdrop-filter: blur(8px) !important;
+      -webkit-backdrop-filter: blur(8px) !important;
+      border: 1px solid rgba(148, 163, 184, 0.25) !important;
+      height: 20px !important;
+      width: 46px !important;
+      top: -12px !important;
+      left: calc(50% - 23px) !important;
+      right: auto !important;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+      border-radius: 999px !important;
+      opacity: 1 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: grab !important;
+      transition: all 0.2s ease !important;
+    }
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle::after,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle::after {
+      content: "⠿" !important;
+      font-size: 14px !important;
+      font-weight: normal !important;
+      color: #64748b !important;
+      display: block !important;
+      line-height: 1 !important;
+      transition: color 0.2s ease !important;
+    }
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle:hover,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle:hover {
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-color: rgba(37, 99, 235, 0.35) !important;
+      transform: scale(1.06) !important;
+    }
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle:hover::after,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle:hover::after {
+      color: #2563eb !important;
+    }
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle:active,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle:active {
+      cursor: grabbing !important;
+      transform: scale(0.96) !important;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06) !important;
+    }
+    /* Floating helper tooltip that appears right above the handle when hovered or selected */
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle::before,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle::before {
+      content: "按住拖拽移动" !important;
+      position: absolute !important;
+      bottom: 26px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      background: #0f172a !important; /* Premium dark slate background */
+      color: #ffffff !important;
+      font-size: 10px !important;
+      font-weight: 500 !important;
+      padding: 4px 8px !important;
+      border-radius: 6px !important;
+      white-space: nowrap !important;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15) !important;
+      pointer-events: none !important;
+      opacity: 0.9 !important;
+      transition: opacity 0.2s ease, transform 0.2s ease !important;
+      z-index: 100 !important;
+      line-height: 1 !important;
+    }
+    .theory-deck-shell.is-editing .theory-component.is-selected .theory-drag-handle:hover::before,
+    .theory-deck-shell.is-editing .theory-component:hover .theory-drag-handle:hover::before {
+      opacity: 1 !important;
+      transform: translateX(-50%) translateY(-2px) !important;
+    }
+    /* Hide the tooltip while actively dragging to prevent visual clutter */
+    .theory-deck-shell.is-editing .theory-component.is-dragging .theory-drag-handle::before {
+      display: none !important;
+    }
     .theory-deck-shell.is-editing .theory-resize-handle {
       pointer-events: auto;
     }
@@ -2370,6 +2455,34 @@
       height: 100%;
       min-height: 0;
     }
+    .three-loss-surface {
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+    .three-loss-surface:active {
+      cursor: grabbing;
+    }
+    .three-loss-surface canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .three-loss-note {
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      border: 1px solid rgba(148, 163, 184, .38);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .82);
+      color: #334155;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      pointer-events: none;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+    }
     .chart-toolbar {
       padding: 10px 18px 0;
       display: flex;
@@ -2509,6 +2622,45 @@
       max-height: none;
       resize: none;
     }
+    /* ---- 预处理信息卡片 (替代 chart-card 用于非图表内容) ---- */
+    .preprocess-dashboard-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      height: 100%;
+    }
+    .preprocess-dashboard-card > .info-card-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+    .preprocess-dashboard-card::after {
+      display: none;
+    }
+    .preprocess-dashboard-card > .chart-head {
+      flex: 0 0 auto;
+    }
+    /* prompt / waiting-state 小卡片 */
+    .preprocess-prompt-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100%;
+    }
+    .preprocess-prompt-card::after {
+      display: none;
+    }
     .dashboard-grid .chart-head {
       cursor: grab;
     }
@@ -2638,6 +2790,9 @@
       padding: 12px;
       margin-top: 12px;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .dataset-load-card h3 {
       margin: 0 0 14px;
@@ -2649,6 +2804,27 @@
     .dataset-load-card select {
       width: 100%;
       margin-bottom: 12px;
+    }
+    .control-card select,
+    .control-card input[type="number"],
+    .control-card input[type="text"] {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      border: 1px solid #dbe3ef;
+      border-radius: 10px;
+      background: #fff;
+      color: #111827;
+      padding: 0 11px;
+      outline: none;
+      font-size: 13px;
+      transition: border-color .14s ease, box-shadow .14s ease;
+    }
+    .control-card select:focus,
+    .control-card input[type="number"]:focus,
+    .control-card input[type="text"]:focus {
+      border-color: rgba(37, 99, 235, .48);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .10);
     }
     .dataset-load-card .btn-row {
       grid-template-columns: 1fr;
@@ -3113,6 +3289,39 @@
       color: #475569;
       font-size: 13px;
     }
+    .test-step-action-card {
+      border-top: 1px solid rgba(148, 163, 184, .28);
+      padding-top: 8px;
+      margin-top: 8px;
+    }
+    .test-step-action-card > .test-answer-row {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .test-step-action-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .test-step-action-list span,
+    .test-step-action-empty {
+      border: 1px solid #dbeafe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .test-step-action-empty {
+      display: inline-block;
+      margin-top: 8px;
+      color: #64748b;
+      background: #f8fafc;
+      border-color: #e2e8f0;
+    }
     .test-explain {
       margin-top: 10px;
       color: #334155;
@@ -3216,6 +3425,40 @@
       color: #172033;
       font-weight: 800;
       line-height: 1.5;
+    }
+    .test-option-readonly {
+      cursor: default;
+      user-select: text;
+    }
+    .test-option-selectable {
+      cursor: pointer;
+      transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    .test-option-selectable:hover {
+      border-color: #93c5fd;
+      background: #f8fbff;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, .08);
+    }
+    .test-option-selectable:has(.test-option-input:checked) {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .test-option-input {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin: 4px 0 0;
+      accent-color: #2563eb;
+    }
+    .test-option-marker {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin-top: 3px;
+      border: 1.5px solid #94a3b8;
+      border-radius: 999px;
+      background: #fff;
     }
     .test-feedback.correct {
       border-color: #bbf7d0;
@@ -3366,6 +3609,12 @@
       grid-template-columns: minmax(0, 1fr) 28px;
       align-items: center;
       gap: 8px;
+    }
+    .range-field + .range-field {
+      margin-top: 4px;
+    }
+    .range-field .range-control {
+      margin-top: 0;
     }
     .control-label + .range-control {
       margin-top: 0;
@@ -3650,6 +3899,34 @@
     .guide-combo-target.guide-highlight {
       z-index: 10001 !important;
       background: #fff;
+    }
+    .train-effect-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .train-loss-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .train-custom-effect-combo-target.guide-highlight,
+    .train-custom-param-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .predict-chart-combo-target.guide-highlight {
+      z-index: 10001 !important;
+      background: #fff;
+    }
+    .button-grid.guide-highlight {
+      background: #fff;
+      border-radius: 10px;
+    }
+    .range-field.guide-highlight {
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-left: -10px;
+      margin-right: -10px;
     }
     .guide-select-wrap select.guide-highlight {
       animation: guideSoftGlow 1.6s ease-in-out infinite;
@@ -3965,6 +4242,28 @@
       font-size: 22px;
       margin-bottom: 12px;
     }
+    /* ---- 扁平化内部 section（替代 .content-card） ---- */
+    .detail-section,
+    .standardize-section {
+      padding: 16px 0;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .detail-section:first-child,
+    .standardize-section:first-child {
+      padding-top: 0;
+    }
+    .detail-section:last-child,
+    .standardize-section:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .detail-section-title,
+    .standardize-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #172033;
+      margin: 0 0 8px 0;
+    }
     .preprocess-metrics {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4004,8 +4303,13 @@
       margin: 16px 0;
     }
     .preprocess-info-card {
-      height: auto;
       min-height: 420px;
+    }
+    .dashboard-grid .preprocess-info-card {
+      min-height: 0;
+    }
+    .dashboard-grid .preprocess-dashboard-card .preprocess-step-body {
+      overflow: auto;
     }
     .preprocess-step-body {
       padding: 18px;
@@ -4107,6 +4411,181 @@
       color: #92400e;
       background: #fffbeb;
     }
+    .ai-assistant-widget {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 850;
+      display: block;
+      touch-action: none;
+    }
+    .ai-assistant-widget.hidden {
+      display: none !important;
+    }
+    .ai-assistant-bubble {
+      width: 64px;
+      height: 64px;
+      border: 1px solid rgba(37, 99, 235, .28);
+      border-radius: 999px;
+      background: linear-gradient(135deg, #2563eb, #0f9f78);
+      color: #fff;
+      box-shadow: 0 18px 34px rgba(15, 23, 42, .22);
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      cursor: grab;
+      user-select: none;
+    }
+    .ai-assistant-bubble:active {
+      cursor: grabbing;
+    }
+    .ai-assistant-bubble span {
+      display: block;
+      font-size: 15px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    .ai-assistant-panel {
+      position: absolute;
+      right: 0;
+      bottom: 76px;
+      width: min(360px, calc(100vw - 32px));
+      height: min(520px, calc(100vh - 96px));
+      border: 1px solid #dbe3ef;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, .24);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      overflow: hidden;
+      touch-action: auto;
+    }
+    .ai-assistant-panel[hidden] {
+      display: none;
+    }
+    .ai-assistant-head {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+    .ai-assistant-head strong {
+      font-size: 15px;
+      line-height: 1.3;
+    }
+    .ai-assistant-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #dbe3ef;
+      border-radius: 999px;
+      background: #fff;
+      color: #475569;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .ai-assistant-messages {
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #f8fafc;
+      scrollbar-width: auto;
+      scrollbar-color: rgba(37, 99, 235, .7) rgba(226, 232, 240, .9);
+      user-select: text;
+      overscroll-behavior: contain;
+    }
+    .ai-assistant-messages::-webkit-scrollbar {
+      width: 10px;
+    }
+    .ai-assistant-messages::-webkit-scrollbar-track {
+      background: rgba(226, 232, 240, .9);
+      border-radius: 999px;
+    }
+    .ai-assistant-messages::-webkit-scrollbar-thumb {
+      background: rgba(37, 99, 235, .72);
+      border-radius: 999px;
+      border: 2px solid rgba(226, 232, 240, .9);
+    }
+    .ai-message {
+      max-width: 88%;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+    }
+    .ai-message.ai-role-assistant {
+      align-self: flex-start;
+      border: 1px solid #dbeafe;
+      background: #fff;
+      color: #172033;
+    }
+    .ai-message.ai-role-user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: #fff;
+    }
+    .ai-assistant-prompts {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .ai-assistant-prompts button {
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .ai-assistant-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+    .ai-assistant-form input {
+      min-width: 0;
+      height: 40px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 0 12px;
+      color: #172033;
+      outline: none;
+    }
+    .ai-assistant-form input:focus {
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+    .ai-assistant-form button {
+      min-width: 64px;
+      height: 40px;
+      border: 0;
+      border-radius: 10px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 950;
+    }
+    .ai-assistant-form button:disabled,
+    .ai-assistant-prompts button:disabled {
+      cursor: not-allowed;
+      opacity: .62;
+    }
     .hidden { display: none !important; }
     @media (max-width: 1260px) {
       .app {
@@ -4155,6 +4634,17 @@
       .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
       .splitter { display: none; }
       .chart-card.wide { grid-column: auto; }
+      .ai-assistant-widget {
+        right: 14px;
+        bottom: 14px;
+      }
+      .ai-assistant-bubble {
+        width: 56px;
+        height: 56px;
+      }
+      .ai-assistant-panel {
+        bottom: 66px;
+      }
     }
 
     /* ==========================================================================
@@ -4318,31 +4808,57 @@
   </div>
 </div>
 
+<div id="aiAssistantWidget" class="ai-assistant-widget hidden" aria-live="polite">
+  <button id="aiAssistantBubble" class="ai-assistant-bubble" type="button" aria-label="打开 AI 学习助手">
+    <span>AI</span>
+  </button>
+  <section id="aiAssistantPanel" class="ai-assistant-panel" hidden aria-label="AI 学习助手聊天框">
+    <header class="ai-assistant-head">
+      <strong>AI 学习助手</strong>
+      <button id="aiAssistantClose" class="ai-assistant-close" type="button" aria-label="关闭 AI 学习助手">×</button>
+    </header>
+    <div id="aiAssistantMessages" class="ai-assistant-messages"></div>
+    <div class="ai-assistant-prompts">
+      <button type="button" data-ai-prompt="我现在应该做什么？">我现在应该做什么？</button>
+      <button type="button" data-ai-prompt="这个图怎么看？">这个图怎么看？</button>
+      <button type="button" data-ai-prompt="这个参数是什么意思？">参数是什么意思？</button>
+      <button type="button" data-ai-prompt="下一步是什么？">下一步是什么？</button>
+    </div>
+    <form id="aiAssistantForm" class="ai-assistant-form">
+      <input id="aiAssistantInput" type="text" autocomplete="off" placeholder="问问当前实验..." />
+      <button id="aiAssistantSend" type="submit">发送</button>
+    </form>
+  </section>
+</div>
+
 <script>
 const FEATURE_NAMES = {{ feature_names | tojson }};
 const DEFAULT_FEATURE = {{ default_feature | tojson }};
 </script>
-<script src="/static/js/state_runtime.js?v=20260601_standard_viz_layout01"></script>
-<script src="/static/js/schema_registry.js?v=20260601_standard_viz01"></script>
-<script src="/static/js/experiment_runtime.js"></script>
-<script src="/static/js/theory_page_registry.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/basic.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/purpose.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/knowledge.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/dataset.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/model.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/criterion.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/optimization.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/evaluation.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/result.js?v=20260522_theory03"></script>
-<script src="/static/js/theory-pages/thinking.js?v=20260522_theory03"></script>
-<script src="/static/js/theory_page.js?v=20260529_pptx_fixed04"></script>
-<script src="/static/js/preprocess_page.js?v=20260601_standard_viz_guide04"></script>
-<script src="/static/js/predict_page.js?v=20260521_predict02"></script>
-<script src="/static/js/train_page.js?v=20260521_train24"></script>
-<script src="/static/js/evaluate_page.js?v=20260521_eval03"></script>
-<script src="/static/js/experiment_test.js?v=20260522_test01"></script>
-<script src="/static/js/app_shell.js"></script>
+<script src="static/js/state_runtime.js?v=20260601_standard_viz_layout01"></script>
+<script src="static/js/schema_registry.js?v=20260603_subpath01"></script>
+<script src="static/js/experiment_runtime.js"></script>
+<script src="static/js/three_loss_surface.js?v=20260601_three_loss03"></script>
+<script src="static/js/theory_page_registry.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/basic.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/purpose.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/knowledge.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/dataset.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/model.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/criterion.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/optimization.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/evaluation.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/result.js?v=20260522_theory03"></script>
+<script src="static/js/theory-pages/thinking.js?v=20260522_theory03"></script>
+<script src="static/js/theory_page.js?v=20260605_pptx_formula_fixed"></script>
+<script src="static/js/preprocess_page.js?v=20260610_dynamic_charts"></script>
+<script src="static/js/predict_page.js?v=20260521_predict02"></script>
+<script src="static/js/train_page.js?v=20260601_train_loss_random01"></script>
+<script src="static/js/evaluate_page.js?v=20260521_eval03"></script>
+<script src="static/js/experiment_test.js?v=20260522_test01"></script>
+<script src="static/js/ai_assistant.js?v=20260604_ai02"></script>
+<script src="static/js/app_shell.js"></script>
 </body>
 </html>
+
 

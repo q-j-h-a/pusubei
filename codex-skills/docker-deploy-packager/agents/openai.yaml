@@ -1,4 +1,0 @@
-interface:
-  display_name: "Docker Deploy Packager"
-  short_description: "Generate clean Dockerfile and .dockerignore files for ordinary app deployment."
-  default_prompt: "Use docker-deploy-packager to inspect this project and create a clean Docker deployment setup with Dockerfile, .dockerignore, dependency updates, and run instructions."

@@ -11,6 +11,8 @@ env/
 flask_stdout.log
 flask_stderr.log
 *.log
+.env
+config.local.json
 
 .pytest_cache/
 .mypy_cache/

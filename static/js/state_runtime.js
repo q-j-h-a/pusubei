@@ -18,6 +18,33 @@ const charts = new Map();
 
 const chartResizeObservers = new Map();
 
+const ECHARTS_FONT_FAMILY = '"Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif';
+
+function _wrapSetOption(chart) {
+  if (!chart || chart._fontWrapped) return chart;
+  const originalSetOption = chart.setOption.bind(chart);
+  chart.setOption = function (option, ...args) {
+    if (option && typeof option === 'object' && !Array.isArray(option)) {
+      if (!option.textStyle) {
+        option = Object.assign({}, option, { textStyle: { fontFamily: ECHARTS_FONT_FAMILY } });
+      } else if (!option.textStyle.fontFamily) {
+        option = Object.assign({}, option, {
+          textStyle: Object.assign({ fontFamily: ECHARTS_FONT_FAMILY }, option.textStyle)
+        });
+      }
+    }
+    return originalSetOption(option, ...args);
+  };
+  chart._fontWrapped = true;
+  return chart;
+}
+
+function initEchartsWithFont(el, opts) {
+  const ch = echarts.init(el, undefined, opts);
+  _wrapSetOption(ch);
+  return ch;
+}
+
 const viewStateStore = {};
 
 let dataGrid = null;
@@ -135,7 +162,21 @@ function destroyDataGrid() {
 
 function initChart(id) {
   const el = $(id);
-  const ch = echarts.init(el);
+  if (id === "chart_loss_surface_3d" && window.THREE && typeof window.createThreeLossSurfaceChart === "function") {
+    const ch = window.createThreeLossSurfaceChart(el);
+    charts.set(id, ch);
+    const resize = () => ch.resize();
+    if ("ResizeObserver" in window) {
+      const observer = new ResizeObserver(resize);
+      observer.observe(el);
+      if (el.parentElement) observer.observe(el.parentElement);
+      chartResizeObservers.set(id, observer);
+    }
+    requestAnimationFrame(resize);
+    bindPrototypeChartInteraction(id, el);
+    return ch;
+  }
+  const ch = initEchartsWithFont(el);
   charts.set(id, ch);
   const resize = () => ch.resize();
   if ("ResizeObserver" in window) {
