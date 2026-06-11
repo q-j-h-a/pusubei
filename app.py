@@ -12,17 +12,13 @@ from core.experiment_registry import (
     DEFAULT_EXPERIMENT_ID,
     discover_experiments,
     resolve_experiment_model,
+    get_experiment,
 )
 from core.chart_registry import discover_experiment_chart_builders, discover_experiment_charts
 from core.control_registry import get_experiment_panel
 from core.registry import discover_models
 from core.schemas import collect_panel_defaults
-from models.simple_linear_regression.model import (
-    FEATURE_COLUMNS,
-    JSON_ACTIONS,
-    load_raw_df,
-    upload_dataset as model_upload_dataset,
-)
+from importlib import import_module
 
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -52,8 +48,7 @@ DEEPSEEK_API_URL = (
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL") or LOCAL_CONFIG.get("deepseek_model") or "deepseek-chat"
 
 
-JSON_ACTION_HANDLERS = dict(JSON_ACTIONS)
-FORM_ACTION_HANDLERS = {"upload_dataset": model_upload_dataset}
+# Action handlers are resolved dynamically from each model's module
 
 
 def _read_theory_deck_overrides():
@@ -87,9 +82,9 @@ def _json_action_response(handler, payload, experiment_id=None):
         return jsonify({"error": str(exc)}), 500
 
 
-def _upload_dataset_response(file, source_type, experiment_id=None):
+def _upload_dataset_response(file, source_type, upload_fn, experiment_id=None):
     try:
-        data = model_upload_dataset(file, source_type)
+        data = upload_fn(file, source_type)
         if experiment_id and isinstance(data, dict):
             data = dict(data)
             data["experiment"] = experiment_id
@@ -198,11 +193,21 @@ def _call_deepseek(messages):
 
 @app.route('/')
 def index():
-    load_raw_df()
+    experiment = get_experiment(DEFAULT_EXPERIMENT_ID)
+    model_id = experiment["model"]
+    model_module = import_module(f"models.{model_id}.model")
+    load_raw_df = getattr(model_module, "load_raw_df", None)
+    if callable(load_raw_df):
+        load_raw_df()
+    feature_columns = getattr(model_module, "FEATURE_COLUMNS", ["text"])
+    if hasattr(model_module, "FEATURE_COLUMNS") and len(model_module.FEATURE_COLUMNS) > 0:
+        default_feat = model_module.FEATURE_COLUMNS[0]
+    else:
+        default_feat = "text"
     return render_template(
         "index.html",
-        feature_names=FEATURE_COLUMNS,
-        default_feature="RM",
+        feature_names=feature_columns,
+        default_feature=default_feat,
     )
 
 
@@ -376,16 +381,18 @@ def api_run_action():
     try:
         if request.content_type and request.content_type.startswith("multipart/form-data"):
             action = request.form.get("action")
-            experiment, _model_meta = resolve_experiment_model(
+            experiment, model_meta = resolve_experiment_model(
                 request.form.get("experiment"),
                 request.form.get("model"),
             )
-            handler = FORM_ACTION_HANDLERS.get(action)
-            if handler is None:
-                return jsonify({"error": f"Unknown action: {action}"}), 404
+            model_module = import_module(f"models.{model_meta['id']}.model")
+            upload_fn = getattr(model_module, "upload_dataset", None)
+            if upload_fn is None:
+                return jsonify({"error": f"Upload dataset not supported for model: {model_meta['id']}"}), 400
             return _upload_dataset_response(
                 request.files.get("file"),
                 request.form.get("source_type", "raw"),
+                upload_fn,
                 experiment["id"],
             )
 
@@ -394,9 +401,11 @@ def api_run_action():
         if not action:
             return jsonify({"error": "缺少 action"}), 400
 
-        experiment, _model_meta = resolve_experiment_model(body.get("experiment"), body.get("model"))
+        experiment, model_meta = resolve_experiment_model(body.get("experiment"), body.get("model"))
 
-        handler = JSON_ACTION_HANDLERS.get(action)
+        model_module = import_module(f"models.{model_meta['id']}.model")
+        actions_dict = getattr(model_module, "JSON_ACTIONS", {})
+        handler = actions_dict.get(action)
         if handler is None:
             return jsonify({"error": f"Unknown action: {action}"}), 404
 
@@ -480,5 +489,5 @@ def api_save_theory_html():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 

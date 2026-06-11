@@ -1,4 +1,4 @@
-﻿// Experiment test flow.
+// Experiment test flow.
 
 const EXPERIMENT_TEST_STATE_KEY = "experimentTestStateV1";
 let freeExperimentSnapshot = null;
@@ -7,18 +7,40 @@ const EXPERIMENT_BEHAVIOR_EVENT_LIMIT = 500;
 
 const EXPERIMENT_TEST_FLOW = [
   {
-    id: "preprocess_load_target",
+    id: "preprocess_load_leak",
     module: "数据预处理",
     title: "加载原始数据",
     page: "preprocess",
     step: "load",
-    operation: "请在右侧控制面板中选择 Boston 原始数据集，点击“加载数据集”。加载完成后，观察页面上方的数据概览卡片和下方数据表格，重点确认以下内容：样本数量、特征数量、目标列名称，以及数据表中每一行代表什么、每一列代表什么。",
-    hint: "注意 MEDV 在当前实验中不是输入特征，而是要预测的目标值。",
-    question: "当前实验的目标列是哪一个？",
+    operation: "请在右侧选择类别（推荐 sci.space 和 rec.autos），限制最大样本为 500，点击【加载数据集】。完成后观察上方类别分布与下方邮件文本预览。",
+    hint: "关注邮件中的信头信息（如 nasa.gov）是否被剥离，思考其对分类的影响。",
+    question: "在 20 Newsgroups 文本分类中，如果不移除邮件信头（Headers，如 From: xxx@nasa.gov），贝叶斯分类器最可能发生什么？",
     type: "single",
-    options: ["RM", "MEDV", "CRIM", "LSTAT"],
-    answer: "MEDV",
-    explanation: "MEDV 表示房价中位数，是当前简单线性回归实验要预测的目标列。"
+    options: [
+      "分类器分类性能大幅下降",
+      "模型可能通过直接识别特征域名（如 nasa.gov）来作弊分类，导致泛化性能极差（过拟合）",
+      "模型无法正常收敛"
+    ],
+    answer: "模型可能通过直接识别特征域名（如 nasa.gov）来作弊分类，导致泛化性能极差（过拟合）",
+    explanation: "信头、签名等包含直接的标签特征泄漏。如果不进行过滤，贝叶斯模型将简单地通过记住发件域名来做分类，导致在未见过的真实邮件上表现极差（严重过拟合）。"
+  },
+  {
+    id: "preprocess_load_stopwords",
+    module: "数据预处理",
+    title: "加载原始数据",
+    page: "preprocess",
+    step: "load",
+    operation: "请观察加载后的数据预览文本，找出那些在各类邮件中均高频出现但无实际分类意义的词（如 the、is、and 等）。",
+    hint: "这些无具体物理含义的常见高频词通常被称为停用词。",
+    question: "观察加载后的文本，像 'the'、'is'、'and' 这样随处可见的常用词。关于它们在文本分类中的作用，以下说法正确的是？",
+    type: "single",
+    options: [
+      "它们是高频核心特征，应该保留来帮助模型判断类别",
+      "它们对区分太空和汽车等类别没有任何帮助（称为“停用词”），后续应当进行过滤",
+      "它们能极大地提升朴素贝叶斯的联合概率估计精度"
+    ],
+    answer: "它们对区分太空和汽车等类别没有任何帮助（称为“停用词”），后续应当进行过滤",
+    explanation: "这类常见虚词不含特定主题的信息，对于各个类别的先验或后验概率计算只有干扰作用，在文本挖掘中通常归为停用词（Stop Words），需要在分词后进行剔除。"
   },
   {
     id: "preprocess_detail_stats",

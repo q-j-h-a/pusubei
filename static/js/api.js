@@ -1,4 +1,4 @@
-const DEFAULT_EXPERIMENT_ID = "simple_linear_regression";
+const DEFAULT_EXPERIMENT_ID = "naive_bayes";
 
 function appBasePath() {
   if (window.APP_BASE_PATH !== undefined) {

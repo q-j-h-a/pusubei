@@ -18,6 +18,33 @@ const charts = new Map();
 
 const chartResizeObservers = new Map();
 
+const ECHARTS_FONT_FAMILY = '"Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif';
+
+function _wrapSetOption(chart) {
+  if (!chart || chart._fontWrapped) return chart;
+  const originalSetOption = chart.setOption.bind(chart);
+  chart.setOption = function (option, ...args) {
+    if (option && typeof option === 'object' && !Array.isArray(option)) {
+      if (!option.textStyle) {
+        option = Object.assign({}, option, { textStyle: { fontFamily: ECHARTS_FONT_FAMILY } });
+      } else if (!option.textStyle.fontFamily) {
+        option = Object.assign({}, option, {
+          textStyle: Object.assign({ fontFamily: ECHARTS_FONT_FAMILY }, option.textStyle)
+        });
+      }
+    }
+    return originalSetOption(option, ...args);
+  };
+  chart._fontWrapped = true;
+  return chart;
+}
+
+function initEchartsWithFont(el, opts) {
+  const ch = echarts.init(el, undefined, opts);
+  _wrapSetOption(ch);
+  return ch;
+}
+
 const viewStateStore = {};
 
 let dataGrid = null;
@@ -149,7 +176,7 @@ function initChart(id) {
     bindPrototypeChartInteraction(id, el);
     return ch;
   }
-  const ch = echarts.init(el);
+  const ch = initEchartsWithFont(el);
   charts.set(id, ch);
   const resize = () => ch.resize();
   if ("ResizeObserver" in window) {

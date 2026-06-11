@@ -2406,6 +2406,7 @@ function markdownToHtml(markdown) {
   let inQuote = false;
   let quoteKind = "quote";
   let quoteBlock = [];
+  if (markdown.includes("$")) ensureTheoryFormulaSupport();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -2414,7 +2415,7 @@ function markdownToHtml(markdown) {
     // 1. Math Display Block
     if (trimmed === "$$") {
       if (inMath) {
-        html += `<div class="math-display">\n    $$\n    ${mathBlock.join("\n")}\n    $$\n</div>\n`;
+        html += `<div class="math-display">\n${renderLatexToHtml(mathBlock.join("\n"))}\n</div>\n`;
         mathBlock = [];
         inMath = false;
       } else {
@@ -2533,7 +2534,23 @@ function markdownToHtml(markdown) {
 }
 
 function parseInlineStyles(text) {
-  let parsed = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const source = String(text ?? "");
+  if (!source.includes("$")) return parseInlineStylesWithoutMath(source);
+  const pattern = /\$([^$\n]+?)\$/g;
+  let parsed = "";
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(source)) !== null) {
+    parsed += parseInlineStylesWithoutMath(source.slice(lastIndex, match.index));
+    parsed += renderInlineLatexToHtml(match[1]);
+    lastIndex = pattern.lastIndex;
+  }
+  parsed += parseInlineStylesWithoutMath(source.slice(lastIndex));
+  return parsed;
+}
+
+function parseInlineStylesWithoutMath(text) {
+  let parsed = String(text ?? "").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   parsed = parsed.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   parsed = parsed.replace(/`([^`]+)`/g, "<code>$1</code>");
   return parsed;
@@ -5265,12 +5282,12 @@ function renderTheoryCharts(options = {}) {
     const existing = runtimes[componentId];
     let instance = existing?.instance || null;
     if (!instance) {
-      instance = echarts.init(node, null, { renderer: "canvas" });
+      instance = initEchartsWithFont(node, { renderer: "canvas" });
     } else if (instance.getDom() !== node) {
       try {
         instance.dispose();
       } catch (err) {}
-      instance = echarts.init(node, null, { renderer: "canvas" });
+      instance = initEchartsWithFont(node, { renderer: "canvas" });
     }
     const option = resolveTheoryChartOption(component, options);
     instance.setOption(option, true);
@@ -6030,7 +6047,7 @@ function captureChartCanvasInMemory(component) {
     canvas.style.top = "-9999px";
     document.body.appendChild(canvas);
 
-    chart = echarts.init(canvas, null, { width: w, height: h, devicePixelRatio: 2 });
+    chart = initEchartsWithFont(canvas, { width: w, height: h, devicePixelRatio: 2 });
     const option = resolveTheoryChartOption(component, { staticMode: true });
     chart.setOption(option);
     

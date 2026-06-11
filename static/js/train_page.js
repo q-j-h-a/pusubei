@@ -1519,6 +1519,10 @@ function updateTrainInfoCards(frame) {
 }
 
 async function renderTrainShell() {
+  if (currentExperimentId() === "naive_bayes") {
+    await renderNbTrainShell();
+    return;
+  }
   await loadTrainPageSchema();
   document.querySelector(".shell").classList.remove("theory");
   ensureTrainTopFlow();
@@ -3616,3 +3620,813 @@ function trainCompareAutoStopReason(frameIndex) {
   if (Number(rawFrame.loss) > 1e12 || Number(stdFrame.loss) > 1e12) return "Loss \u660e\u663e\u53d1\u6563\uff0c\u5df2\u505c\u6b62\u6f14\u793a\u3002";
   return "";
 }
+
+/* ==========================================================================
+   朴素贝叶斯模型训练与评估模块 (Naive Bayes Model Training)
+   ========================================================================== */
+
+let nbTrainData = null;       // 缓存训练完成的模型结果
+let nbProbeData = null;       // 缓存单词探针查询结果
+let nbPredictData = null;     // 缓存测试样本决策推演结果
+let nbLoading = false;
+let activeNbTrainStep = "nb_train";
+let nbTrainProgressStep = "nb_train";
+let nbCharts = [];
+
+function clearNbCharts() {
+  nbCharts.forEach(ch => {
+    try { ch.dispose(); } catch(e) {}
+  });
+  nbCharts = [];
+}
+
+function ensureNbTrainTopFlow() {
+  const slot = $("pageTopSlot");
+  if (!slot) return null;
+  slot.classList.add("has-content");
+  if (!$("nbTrainFlow")) {
+    slot.innerHTML = `<div class="preprocess-flow" id="nbTrainFlow"></div>`;
+  }
+  return $("nbTrainFlow");
+}
+
+function renderNbTrainFlow() {
+  const flow = ensureNbTrainTopFlow();
+  if (!flow) return;
+  const progressIndex = NB_TRAIN_STEPS.findIndex(s => s.id === nbTrainProgressStep);
+  flow.innerHTML = NB_TRAIN_STEPS.map((step, index) => {
+    const classes = ["flow-step"];
+    if (step.id === activeNbTrainStep) classes.push("active");
+    else if (index <= progressIndex) classes.push("done");
+    return `<button class="${classes.join(" ")}" type="button" data-nb-step="${step.id}"><span>${step.no}</span><strong>${step.label}</strong></button>`;
+  }).join("");
+}
+
+function bindNbTrainFlow() {
+  const flow = ensureNbTrainTopFlow();
+  if (!flow || flow.dataset.nbBound === "true") return;
+  flow.dataset.nbBound = "true";
+  flow.addEventListener("click", async event => {
+    const btn = event.target.closest("[data-nb-step]");
+    if (!btn) return;
+    const previousStep = activeNbTrainStep;
+    activeNbTrainStep = btn.dataset.nbStep;
+    viewStateStore.activeNbTrainStep = activeNbTrainStep;
+    
+    // 只允许跳往已解锁（或已经过的）步骤
+    const pIdx = NB_TRAIN_STEPS.findIndex(s => s.id === nbTrainProgressStep);
+    const cIdx = NB_TRAIN_STEPS.findIndex(s => s.id === activeNbTrainStep);
+    if (cIdx > pIdx && nbTrainData) {
+      nbTrainProgressStep = activeNbTrainStep;
+      viewStateStore.nbTrainProgressStep = nbTrainProgressStep;
+    } else if (cIdx > pIdx && !nbTrainData) {
+      // 未训练模型，不允许跳步，恢复原状态
+      activeNbTrainStep = previousStep;
+      return;
+    }
+    await renderNbTrainCurrentStep();
+  });
+}
+
+const NB_TRAIN_STEPS = [
+  { id: "nb_train", no: 1, label: "配置与训练" },
+  { id: "nb_prob", no: 2, label: "概率学习" },
+  { id: "nb_predict", no: 3, label: "决策推演" }
+];
+
+async function renderNbTrainShell() {
+  document.querySelector(".shell").classList.remove("theory");
+  ensureNbTrainTopFlow();
+  renderNbTrainFlow();
+  bindNbTrainFlow();
+
+  $("main").innerHTML = `<div id="nbTrainContent" style="padding: 10px 18px 24px 18px; width: 100%; box-sizing: border-box; overflow-y: auto; height: 100%;"></div>`;
+  $("rightPanel").innerHTML = `<div id="nbTrainRightPanel"></div>`;
+
+  await renderNbTrainCurrentStep();
+}
+
+async function renderNbTrainCurrentStep() {
+  clearNbCharts();
+  renderNbTrainFlow();
+
+  const content = $("nbTrainContent");
+  if (!content) return;
+
+  // 1. 安全过滤：如果跳到第2、3步，但模型还未训练，强制拦截并渲染警告
+  if (!nbTrainData && activeNbTrainStep !== "nb_train") {
+    content.innerHTML = `
+      <section class="preprocess-prompt-card" style="padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #fff; border-radius: 8px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+        <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #495057;">请先训练模型</h3>
+        <p style="font-size: 13px; color: #868e96; max-width: 400px; margin: 0 0 20px 0; line-height: 1.5;">当前步骤依赖已训练的贝叶斯模型。请返回步骤 01 【配置与训练】 完成训练后再试。</p>
+        <button class="primary-btn" type="button" onclick="activeNbTrainStep = 'nb_train'; renderNbTrainCurrentStep();" style="margin: 0; padding: 8px 20px; font-size: 13px;">去配置并训练模型</button>
+      </section>
+    `;
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">操作提示</div>
+      <div class="control-card">
+        <p style="font-size: 13px; color: #868e96; line-height: 1.5; margin: 0;">当前步骤已锁。您需要先在第一步中点击开始训练以拟合模型，随后才可查询概率特征与进行推演。</p>
+      </div>
+    `;
+    return;
+  }
+
+  // 2. 根据步骤渲染不同主内容与右侧栏
+  if (activeNbTrainStep === "nb_train") {
+    if (!nbTrainData) {
+      content.innerHTML = `
+        <section class="preprocess-prompt-card" style="padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #fff; border-radius: 8px;">
+          <div style="font-size: 48px; margin-bottom: 16px;">🤖</div>
+          <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #495057;">模型就绪，等待训练</h3>
+          <p style="font-size: 13px; color: #868e96; max-width: 400px; margin: 0 0 20px 0; line-height: 1.5;">请在右侧控制面板中选择算法类型，配置平滑系数，然后点击【开始训练】按钮。</p>
+        </section>
+      `;
+    } else {
+      content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+          <div class="mini-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px;">
+            <div class="mini-stat"><span>训练集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.train_accuracy * 100).toFixed(2)}%</strong></div>
+            <div class="mini-stat"><span>测试集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.test_accuracy * 100).toFixed(2)}%</strong></div>
+            <div class="mini-stat"><span>训练样本量</span><strong>${nbTrainData.train_count}</strong></div>
+            <div class="mini-stat"><span>测试样本量</span><strong>${nbTrainData.test_count}</strong></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px;">
+            <section class="chart-card">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">各类别评估指标对比</div>
+                  <div class="chart-sub">测试集上的精确率 (Precision)、召回率 (Recall)、F1 值分类报告</div>
+                </div>
+              </div>
+              <div class="chart" id="nbMetricsChart" style="height: 300px; min-height: 300px;"></div>
+            </section>
+            <section class="chart-card">
+              <div class="chart-head">
+                <div>
+                  <div class="chart-title">模型配置与先验概率</div>
+                  <div class="chart-sub">算法参数及先验分布 P(Class) 对比</div>
+                </div>
+              </div>
+              <div style="padding: 0 18px 10px 18px;">
+                <div class="table-wrap" style="margin-bottom: 12px; background: transparent; border: none; padding: 0;">
+                  <table style="font-size:12px; width:100%; border-collapse: collapse;">
+                    <tbody>
+                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>算法类型:</strong></td><td style="color:#2b5c8f;">${nbTrainData.model_type}</td><td style="padding: 6px 0;"><strong>平滑系数 α:</strong></td><td>${nbTrainData.alpha}</td></tr>
+                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>特征词总数:</strong></td><td>${nbTrainData.n_features}</td><td style="padding: 6px 0;"><strong>类别数量:</strong></td><td>${nbTrainData.n_classes}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="chart" id="nbPriorsChart" style="height: 150px; min-height: 150px;"></div>
+            </section>
+          </div>
+        </div>
+      `;
+      // 渲染 Step 01 图表
+      renderNbTrainCharts();
+    }
+    
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">控制面板</div>
+      <div class="control-card">
+        <h3>算法参数配置</h3>
+        <div class="control-group">
+          <label class="control-label" for="nbModelType">算法类型</label>
+          <select id="nbModelType" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ced4da; font-size:13px; margin-bottom:12px;">
+            <option value="MultinomialNB" ${nbTrainData?.model_type === "MultinomialNB" ? "selected" : ""}>多项式贝叶斯 (MultinomialNB)</option>
+            <option value="ComplementNB" ${nbTrainData?.model_type === "ComplementNB" ? "selected" : ""}>补集贝叶斯 (ComplementNB)</option>
+          </select>
+          
+          <label class="control-label" for="nbAlpha" style="margin-top:12px; display:block; font-size:13px; font-weight:500;">
+            平滑系数 (α): <span id="nbAlphaVal" style="font-weight:bold; color:#2b5c8f;">${nbTrainData?.alpha ?? "1.0"}</span>
+          </label>
+          <input type="range" id="nbAlpha" min="0.0" max="10.0" step="0.1" value="${nbTrainData?.alpha ?? "1.0"}" style="width:100%; cursor:pointer;" oninput="$('nbAlphaVal').textContent = Number(this.value).toFixed(1)">
+        </div>
+        
+        <div style="margin-top: 24px;">
+          <button class="primary-btn" id="nbStartTrainBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:14px; font-weight:600;">开始训练</button>
+        </div>
+        <div class="status-line" id="nbTrainStatus" style="margin-top: 12px; font-size: 12px; color: #868e96;">就绪，等待训练。</div>
+      </div>
+    `;
+    
+    // 绑定事件
+    $("nbStartTrainBtn").addEventListener("click", runNbTrain);
+
+  } else if (activeNbTrainStep === "nb_prob") {
+    content.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">双类别特征词云图</div>
+              <div class="chart-sub">词的大小代表该词在所属类别的权重得分 (MultinomialNB: P(w|c), ComplementNB: 1/P(w|~c))，支持点击查概率。</div>
+            </div>
+          </div>
+          <div id="nbWordCloudsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 10px 18px 18px 18px;">
+            <div>
+              <h4 style="margin: 0 0 10px 0; text-align: center; color: #2b5c8f; font-size: 14px; font-weight:600;" id="nbCloudTitle1">类别 1</h4>
+              <div id="nbWordCloud1" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+            </div>
+            <div>
+              <h4 style="margin: 0 0 10px 0; text-align: center; color: #e67e22; font-size: 14px; font-weight:600;" id="nbCloudTitle2">类别 2</h4>
+              <div id="nbWordCloud2" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+            </div>
+          </div>
+        </section>
+        
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">条件概率特征单词探针</div>
+              <div class="chart-sub">展示所查询特征词在各个类别下的条件概率 P(word|class)</div>
+            </div>
+          </div>
+          <div style="padding: 10px 18px 18px 18px;">
+            <div id="nbProbeWarningContainer"></div>
+            <div id="nbProbeChartsRow" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; align-items: center;">
+              <div class="chart" id="nbProbeChart" style="height: 240px; min-height: 240px;"></div>
+              <div style="background: #f8f9fa; padding: 18px; border-radius: 6px; border: 1px solid #e9ecef; min-height: 180px; box-sizing: border-box; display:flex; flex-direction:column; justify-content:center;">
+                <h5 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600; color: #343a40; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">探针数值详情</h5>
+                <div id="nbProbeStats" style="font-size: 12px; line-height: 1.6; color: #495057;">
+                  <span style="color:#868e96;">请在右侧输入框搜索单词，或点击词云图中的单词。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    // 渲染词云
+    renderNbWordClouds();
+
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">条件概率探针</div>
+      <div class="control-card">
+        <h3>特征词检索</h3>
+        <div class="control-group">
+          <label class="control-label" for="nbWordProbeInput">输入查询词</label>
+          <input type="text" id="nbWordProbeInput" placeholder="输入单词，例如 space, engine..." style="width:100%; padding:8px; border-radius:4px; border:1px solid #ced4da; font-size:13px; margin-bottom:12px;" value="${nbProbeData?.word || ""}">
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="primary-btn" id="nbWordProbeBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">开始查询</button>
+        </div>
+        <div class="status-line" id="nbProbeStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">提示：点击词云中的词，或手动输入单词并查询。</div>
+      </div>
+    `;
+
+    // 绑定事件
+    $("nbWordProbeBtn").addEventListener("click", () => {
+      const w = $("nbWordProbeInput").value.trim();
+      runNbWordProbe(w);
+    });
+
+    // 如果之前有探针数据，重绘探针
+    if (nbProbeData) {
+      renderNbProbeChart();
+    }
+
+  } else if (activeNbTrainStep === "nb_predict") {
+    content.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">测试样本原文</div>
+              <div class="chart-sub">当前抽取的测试文档内容预览（过滤不相关换行，高亮展示预测决策贡献词）</div>
+            </div>
+          </div>
+          <div style="padding: 10px 18px 18px 18px;">
+            <div id="nbSampleText" style="background:#f8f9fa; border:1px solid #e9ecef; padding:15px; border-radius:6px; font-family:monospace; max-height:160px; overflow-y:auto; font-size:13px; line-height:1.6; color:#495057; white-space: pre-wrap; word-break: break-all; min-height: 80px;">
+              ${nbPredictData ? nbHighlightText(nbPredictData.text_preview, nbPredictData.top_words) : `<span style="color:#868e96;">等待抽取测试样本，请点击右侧面板按钮。</span>`}
+            </div>
+          </div>
+        </section>
+        
+        <div style="display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 16px;">
+          <section class="chart-card">
+            <div class="chart-head">
+              <div>
+                <div class="chart-title">分类预测概率 P(Class|Doc)</div>
+                <div class="chart-sub">通过后验得分平移进行 Softmax 归一化得到的置信度占比</div>
+              </div>
+            </div>
+            <div class="chart" id="nbPosteriorChart" style="height: 280px; min-height: 280px;"></div>
+          </section>
+          
+          <section class="chart-card">
+            <div class="chart-head">
+              <div>
+                <div class="chart-title">决策数学推导拆解</div>
+                <div class="chart-sub">展示 log P(c|d) = log P(c) + Σ log P(w|c) 贡献排名靠前的决策特征词</div>
+              </div>
+            </div>
+            <div style="padding: 10px 18px 18px 18px;">
+              <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
+                ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
+              </div>
+              <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
+              <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
+                <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
+                  <thead>
+                    <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
+                      <th style="padding: 6px;">单词</th>
+                      <th style="padding: 6px;">样本内频次</th>
+                      <th style="padding: 6px;" id="nbTableHeaderClass1">Class 1 log P</th>
+                      <th style="padding: 6px;" id="nbTableHeaderClass2">Class 2 log P</th>
+                      <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    `;
+
+    // 渲染右侧面板
+    $("nbTrainRightPanel").innerHTML = `
+      <div class="right-title">决策推演控制</div>
+      <div class="control-card">
+        <h3>样本检验与推演</h3>
+        <div style="margin-top: 10px;">
+          <button class="primary-btn" id="nbRandomSampleBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">随机抽取测试样本</button>
+        </div>
+        
+        <div class="mini-stats" style="margin-top: 18px; display: block; border: 1px solid #f1f3f5; padding: 12px; border-radius: 6px; background:#fafafa;">
+          <h4 style="font-size: 12px; margin: 0 0 10px 0; color: #495057; font-weight:600; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">判定状态</h4>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>样本索引:</span>
+            <strong id="nbSampleIdx">${nbPredictData ? nbPredictData.sample_index + 1 : "--"} / ${nbPredictData ? nbPredictData.total_samples : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>真实分类:</span>
+            <strong id="nbTrueLabel" style="color: #2b5c8f;">${nbPredictData ? nbPredictData.true_label : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span>预测分类:</span>
+            <strong id="nbPredLabel" style="color: #e67e22;">${nbPredictData ? nbPredictData.predicted_label : "--"}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0; font-size:12px; align-items: center;">
+            <span>推演结果:</span>
+            <span id="nbCorrectBadge">${nbPredictData ? (nbPredictData.correct ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`) : "--"}</span>
+          </div>
+        </div>
+        
+        <div class="status-line" id="nbPredictStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">就绪。</div>
+      </div>
+    `;
+
+    // 绑定事件
+    $("nbRandomSampleBtn").addEventListener("click", runNbPredict);
+
+    // 如果之前有预测数据，重绘图表
+    if (nbPredictData) {
+      renderNbPosteriorChart();
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// 动作接口调用与响应
+// --------------------------------------------------------------------------
+
+async function runNbTrain() {
+  const modelType = $("nbModelType").value;
+  const alpha = parseFloat($("nbAlpha").value);
+  const status = $("nbTrainStatus");
+  
+  if (status) status.textContent = "正在训练贝叶斯分类器...";
+  nbLoading = true;
+  
+  try {
+    const res = await runAction("prepare_train", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
+      model_type: modelType,
+      alpha: alpha
+    });
+    
+    nbTrainData = res;
+    nbTrainProgressStep = "nb_train";
+    
+    // 更新全局上下文 ID
+    if (res.context_id) {
+      currentContextId = res.context_id;
+    }
+    
+    if (status) status.textContent = "模型训练完成。";
+    
+    // 重绘
+    await renderNbTrainCurrentStep();
+    
+  } catch (err) {
+    console.error("Bayes train error:", err);
+    if (status) status.textContent = `训练失败: ${err.message}`;
+    showToast?.(`训练失败: ${err.message}`, "error");
+  } finally {
+    nbLoading = false;
+  }
+}
+
+async function runNbWordProbe(word) {
+  if (!word) return;
+  const status = $("nbProbeStatus");
+  if (status) status.textContent = `正在查询单词 "${word}" 概率...`;
+  
+  try {
+    const res = await runAction("get_word_prob", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
+      word: word
+    });
+    
+    nbProbeData = res;
+    
+    if (status) status.textContent = `查询单词 "${word}" 完成。`;
+    
+    // 渲染探针警告与图表
+    const warningContainer = $("nbProbeWarningContainer");
+    const statsContainer = $("nbProbeStats");
+    
+    if (res.is_unseen) {
+      if (warningContainer) {
+        warningContainer.innerHTML = `
+          <div class="alert alert-warning" style="background: #fff3cd; color: #856404; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 5px solid #ffc107; font-size:12px;">
+            ⚠️ 单词 <strong>"${escapeHtml(res.word)}"</strong> 未进入当前分类特征词典（属于停用词或词频未达标被截断），所有类别下的条件概率均记为 0。
+          </div>
+        `;
+      }
+      if (statsContainer) {
+        statsContainer.innerHTML = `
+          <span style="color:#d9534f; font-weight:bold;">未登录词 / 停用词</span><br>
+          该词在预处理分词过滤阶段已被筛除，无法计算分类似然概率贡献。
+        `;
+      }
+    } else {
+      if (warningContainer) warningContainer.innerHTML = "";
+      if (statsContainer) {
+        let rowsHtml = "";
+        for (const [cName, prob] of Object.entries(res.probs)) {
+          const logProb = res.log_probs[cName];
+          rowsHtml += `
+            <div style="margin-bottom:8px;">
+              <strong>${escapeHtml(cName)}</strong><br>
+              条件概率 P(w|c): <span style="color:#2b5c8f; font-weight:bold;">${prob.toExponential(4)}</span><br>
+              对数似然 log P(w|c): <span style="color:#e67e22; font-weight:bold;">${logProb.toFixed(4)}</span>
+            </div>
+          `;
+        }
+        statsContainer.innerHTML = rowsHtml;
+      }
+    }
+    
+    renderNbProbeChart();
+    
+  } catch (err) {
+    console.error("Word probe error:", err);
+    if (status) status.textContent = `查询失败: ${err.message}`;
+  }
+}
+
+async function runNbPredict() {
+  const status = $("nbPredictStatus");
+  if (status) status.textContent = "正在随机抽取并分析测试样本...";
+  
+  try {
+    const res = await runAction("predict", {
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups"
+    });
+    
+    nbPredictData = res;
+    if (status) status.textContent = "抽取与后验概率计算完成。";
+    
+    // 更新控制面板状态
+    $("nbSampleIdx").textContent = `${res.sample_index + 1} / ${res.total_samples}`;
+    $("nbTrueLabel").textContent = res.true_label;
+    $("nbPredLabel").textContent = res.predicted_label;
+    $("nbCorrectBadge").innerHTML = res.correct 
+      ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` 
+      : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`;
+      
+    // 更新左侧主文本预览
+    $("nbSampleText").innerHTML = nbHighlightText(res.text_preview, res.top_words);
+    
+    // 更新数学拆解公式
+    $("nbDeductionFormula").innerHTML = nbGetFormulaHtml(res);
+    
+    // 更新表格行
+    $("nbContribTable").querySelector("tbody").innerHTML = nbGetContribTableRowsHtml(res);
+    
+    // 渲染后验得分概率柱状图
+    renderNbPosteriorChart();
+    
+  } catch (err) {
+    console.error("Bayes predict error:", err);
+    if (status) status.textContent = `抽取失败: ${err.message}`;
+  }
+}
+
+// --------------------------------------------------------------------------
+// 局部 HTML 文字修饰与高亮渲染函数
+// --------------------------------------------------------------------------
+
+function nbHighlightText(text, topWords) {
+  if (!text) return "";
+  let html = escapeHtml(text);
+  
+  // 对 Top-5 贡献词在文本预览中进行黄色底色高亮展示，突出重要特征
+  topWords.forEach(item => {
+    const word = item.word;
+    const regex = new RegExp(`\\b(${word})\\b`, "gi");
+    html = html.replace(regex, `<mark style="background:#fff3cd; color:#856404; font-weight:bold; padding:0 2px; border-radius:2px;">$1</mark>`);
+  });
+  
+  return html;
+}
+
+function nbGetFormulaHtml(data) {
+  const keys = Object.keys(data.raw_scores);
+  let html = `<strong>决策公式推导 (后验对数得分连加):</strong><br>`;
+  keys.forEach(name => {
+    const prior = data.prior_scores[name].toFixed(4);
+    const like = data.likelihood_scores[name].toFixed(4);
+    const total = data.raw_scores[name].toFixed(4);
+    const boldStyle = name === data.predicted_label ? "font-weight:bold; color:#d9534f;" : "";
+    html += `<div style="margin-top: 4px; ${boldStyle}">log P(${escapeHtml(name)}|doc) = log P(prior) + log P(likelihood) = ${prior} + (${like}) = <strong>${total}</strong></div>`;
+  });
+  return html;
+}
+
+function nbGetContribTableRowsHtml(data) {
+  if (!data.top_words || !data.top_words.length) {
+    return `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">没有提取到特征贡献词。</td></tr>`;
+  }
+  const keys = Object.keys(data.raw_scores);
+  return data.top_words.map(item => {
+    const c1 = item.contributions[keys[0]].toFixed(4);
+    const c2 = item.contributions[keys[1]].toFixed(4);
+    const diff = item.diff.toFixed(4);
+    return `
+      <tr style="border-bottom: 1px solid #f1f3f5;">
+        <td style="padding: 6px; font-weight:bold; color:#2b5c8f;">${escapeHtml(item.word)}</td>
+        <td style="padding: 6px;">${item.val}</td>
+        <td style="padding: 6px; color:#666;">${c1}</td>
+        <td style="padding: 6px; color:#666;">${c2}</td>
+        <td style="padding: 6px; text-align:right; font-weight:bold; color:#1e824c;">${diff}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+// --------------------------------------------------------------------------
+// ECharts 绘图核心渲染
+// --------------------------------------------------------------------------
+
+function renderNbTrainCharts() {
+  if (!nbTrainData) return;
+  clearNbCharts();
+
+  // 1. 绘制评估分类报告
+  const metricsDom = $("nbMetricsChart");
+  if (metricsDom) {
+    const ch = echarts.init(metricsDom);
+    const targetNames = nbTrainData.target_names;
+    
+    const precisions = targetNames.map(name => nbTrainData.class_report[name].precision);
+    const recalls = targetNames.map(name => nbTrainData.class_report[name].recall);
+    const f1s = targetNames.map(name => nbTrainData.class_report[name].f1);
+
+    const option = {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: ['精确率 (Precision)', '召回率 (Recall)', 'F1 值 (F1-score)'], bottom: 0 },
+      grid: { left: '3%', right: '4%', bottom: '10%', top: '8%', containLabel: true },
+      xAxis: { type: 'category', data: targetNames },
+      yAxis: { type: 'value', min: 0, max: 1.0, interval: 0.2 },
+      color: ['#4f86c6', '#1e824c', '#e67e22'],
+      series: [
+        { name: '精确率 (Precision)', type: 'bar', data: precisions },
+        { name: '召回率 (Recall)', type: 'bar', data: recalls },
+        { name: 'F1 值 (F1-score)', type: 'bar', data: f1s }
+      ]
+    };
+    ch.setOption(option);
+    nbCharts.push(ch);
+  }
+
+  // 2. 绘制先验分布
+  const priorsDom = $("nbPriorsChart");
+  if (priorsDom) {
+    const ch = echarts.init(priorsDom);
+    const targetNames = nbTrainData.target_names;
+    const values = targetNames.map(name => nbTrainData.prior_probs[name]);
+
+    const option = {
+      tooltip: { trigger: 'axis', formatter: '{b}: {c}' },
+      grid: { left: '3%', right: '8%', bottom: '5%', top: '5%', containLabel: true },
+      xAxis: { type: 'value', min: 0, max: 1.0 },
+      yAxis: { type: 'category', data: targetNames },
+      color: ['#2b5c8f'],
+      series: [
+        {
+          type: 'bar',
+          data: values,
+          label: {
+            show: true,
+            position: 'right',
+            formatter: (params) => params.value.toFixed(4)
+          }
+        }
+      ]
+    };
+    ch.setOption(option);
+    nbCharts.push(ch);
+  }
+}
+
+function renderNbProbeChart() {
+  const probeDom = $("nbProbeChart");
+  if (!probeDom || !nbProbeData) return;
+  
+  // 查找原有的该 DOM 实例，重新 init
+  const oldCh = echarts.getInstanceByDom(probeDom);
+  if (oldCh) oldCh.dispose();
+  
+  const ch = echarts.init(probeDom);
+  const targetNames = Object.keys(nbProbeData.probs);
+  const values = targetNames.map(name => nbProbeData.probs[name]);
+
+  const option = {
+    title: { 
+      text: `单词探针: "${nbProbeData.word}"`, 
+      left: 'center', 
+      textStyle: { fontSize: 13, fontWeight: 'bold', color: '#495057' } 
+    },
+    tooltip: { 
+      trigger: 'axis', 
+      formatter: (params) => {
+        const item = params[0];
+        return `${item.name}<br>条件概率 P(w|c): <strong>${item.value.toExponential(4)}</strong>`;
+      } 
+    },
+    grid: { left: '3%', right: '4%', bottom: '8%', top: '20%', containLabel: true },
+    xAxis: { type: 'category', data: targetNames },
+    yAxis: { 
+      type: 'value',
+      name: 'P(word | class)',
+      nameTextStyle: { fontSize: 10 }
+    },
+    color: ['#2b5c8f'],
+    series: [
+      {
+        type: 'bar',
+        data: values,
+        barMaxWidth: 60,
+        label: {
+          show: true,
+          position: 'top',
+          formatter: (params) => params.value.toExponential(2)
+        }
+      }
+    ]
+  };
+  ch.setOption(option);
+  nbCharts.push(ch);
+}
+
+function renderNbPosteriorChart() {
+  const postDom = $("nbPosteriorChart");
+  if (!postDom || !nbPredictData) return;
+  
+  const oldCh = echarts.getInstanceByDom(postDom);
+  if (oldCh) oldCh.dispose();
+  
+  const ch = echarts.init(postDom);
+  const targetNames = Object.keys(nbPredictData.probs);
+  const values = targetNames.map(name => nbPredictData.probs[name] * 100);
+
+  // 找出概率最高的类别作为预测类别并高亮
+  const predName = nbPredictData.predicted_label;
+  
+  const option = {
+    tooltip: { 
+      trigger: 'axis', 
+      formatter: '{b}: {c}%' 
+    },
+    grid: { left: '3%', right: '8%', bottom: '5%', top: '10%', containLabel: true },
+    xAxis: { 
+      type: 'value', 
+      min: 0, 
+      max: 100,
+      axisLabel: { formatter: '{value}%' }
+    },
+    yAxis: { type: 'category', data: targetNames },
+    series: [
+      {
+        type: 'bar',
+        data: values.map((val, idx) => {
+          const isPred = targetNames[idx] === predName;
+          return {
+            value: val,
+            itemStyle: {
+              color: isPred ? '#e74c3c' : '#4f86c6' // 高亮预测类别用红橙色，其余用经典蓝
+            }
+          };
+        }),
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{c}%'
+        }
+      }
+    ]
+  };
+  ch.setOption(option);
+  nbCharts.push(ch);
+}
+
+// --------------------------------------------------------------------------
+// 双词云图自适应 HTML-CSS 排列生成器
+// --------------------------------------------------------------------------
+
+function renderNbWordClouds() {
+  if (!nbTrainData) return;
+  const targetNames = nbTrainData.target_names;
+  
+  $("nbCloudTitle1").textContent = `新闻版块：${targetNames[0]}`;
+  $("nbCloudTitle2").textContent = `新闻版块：${targetNames[1]}`;
+  
+  generateHtmlWordCloud("nbWordCloud1", nbTrainData.top_words_per_class[targetNames[0]]);
+  generateHtmlWordCloud("nbWordCloud2", nbTrainData.top_words_per_class[targetNames[1]]);
+}
+
+function generateHtmlWordCloud(containerId, words) {
+  const container = $(containerId);
+  if (!container) return;
+  container.innerHTML = "";
+  
+  if (!words || !words.length) {
+    container.innerHTML = `<span style="color:#868e96; font-size:12px;">无词表特征数据。</span>`;
+    return;
+  }
+
+  // 稍微混洗下使得排列看起来更自然随机
+  const shuffled = [...words].sort(() => Math.random() - 0.5);
+  
+  // 品牌色调和谐色彩调色板 (蓝色、蓝灰色、中性偏暗高雅色系)
+  const colors = ["#2b5c8f", "#4a90e2", "#1b3a5b", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#2980b9", "#2c3e50", "#7f8c8d"];
+  
+  shuffled.forEach(w => {
+    const el = document.createElement("span");
+    el.textContent = w.word;
+    
+    // 直接使用后端已经基于权重算好分配的 score 作字号大小
+    el.style.fontSize = `${w.score}px`;
+    el.style.fontWeight = w.score > 28 ? "bold" : "normal";
+    el.style.color = colors[Math.floor(Math.random() * colors.length)];
+    el.style.cursor = "pointer";
+    el.style.display = "inline-block";
+    el.style.transition = "transform 0.15s ease, text-shadow 0.15s ease, background 0.15s ease";
+    el.style.padding = "2px 5px";
+    el.style.borderRadius = "4px";
+    el.style.margin = "2px";
+    el.style.lineHeight = "1";
+    
+    // 鼠标悬停动画微交互
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "scale(1.2) translateY(-2px)";
+      el.style.textShadow = "0 3px 6px rgba(43,92,143,0.25)";
+      el.style.background = "#eef4fa";
+    });
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "scale(1) translateY(0)";
+      el.style.textShadow = "none";
+      el.style.background = "transparent";
+    });
+    
+    // 鼠标点击更新探针并触发查询
+    el.addEventListener("click", () => {
+      const inp = $("nbWordProbeInput");
+      if (inp) {
+        inp.value = w.word;
+        runNbWordProbe(w.word);
+      }
+    });
+    
+    container.appendChild(el);
+  });
+}
+
+// 自动响应窗口大小变动重绘
+window.addEventListener("resize", () => {
+  nbCharts.forEach(ch => {
+    try { ch.resize(); } catch(e) {}
+  });
+});
+

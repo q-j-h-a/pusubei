@@ -2622,6 +2622,45 @@
       max-height: none;
       resize: none;
     }
+    /* ---- 预处理信息卡片 (替代 chart-card 用于非图表内容) ---- */
+    .preprocess-dashboard-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      height: 100%;
+    }
+    .preprocess-dashboard-card > .info-card-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+    .preprocess-dashboard-card::after {
+      display: none;
+    }
+    .preprocess-dashboard-card > .chart-head {
+      flex: 0 0 auto;
+    }
+    /* prompt / waiting-state 小卡片 */
+    .preprocess-prompt-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100%;
+    }
+    .preprocess-prompt-card::after {
+      display: none;
+    }
     .dashboard-grid .chart-head {
       cursor: grab;
     }
@@ -2751,6 +2790,9 @@
       padding: 12px;
       margin-top: 12px;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .dataset-load-card h3 {
       margin: 0 0 14px;
@@ -2762,6 +2804,27 @@
     .dataset-load-card select {
       width: 100%;
       margin-bottom: 12px;
+    }
+    .control-card select,
+    .control-card input[type="number"],
+    .control-card input[type="text"] {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      border: 1px solid #dbe3ef;
+      border-radius: 10px;
+      background: #fff;
+      color: #111827;
+      padding: 0 11px;
+      outline: none;
+      font-size: 13px;
+      transition: border-color .14s ease, box-shadow .14s ease;
+    }
+    .control-card select:focus,
+    .control-card input[type="number"]:focus,
+    .control-card input[type="text"]:focus {
+      border-color: rgba(37, 99, 235, .48);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .10);
     }
     .dataset-load-card .btn-row {
       grid-template-columns: 1fr;
@@ -4179,6 +4242,28 @@
       font-size: 22px;
       margin-bottom: 12px;
     }
+    /* ---- 扁平化内部 section（替代 .content-card） ---- */
+    .detail-section,
+    .standardize-section {
+      padding: 16px 0;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .detail-section:first-child,
+    .standardize-section:first-child {
+      padding-top: 0;
+    }
+    .detail-section:last-child,
+    .standardize-section:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .detail-section-title,
+    .standardize-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #172033;
+      margin: 0 0 8px 0;
+    }
     .preprocess-metrics {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4218,8 +4303,13 @@
       margin: 16px 0;
     }
     .preprocess-info-card {
-      height: auto;
       min-height: 420px;
+    }
+    .dashboard-grid .preprocess-info-card {
+      min-height: 0;
+    }
+    .dashboard-grid .preprocess-dashboard-card .preprocess-step-body {
+      overflow: auto;
     }
     .preprocess-step-body {
       padding: 18px;
@@ -4761,7 +4851,7 @@ const DEFAULT_FEATURE = {{ default_feature | tojson }};
 <script src="static/js/theory-pages/result.js?v=20260522_theory03"></script>
 <script src="static/js/theory-pages/thinking.js?v=20260522_theory03"></script>
 <script src="static/js/theory_page.js?v=20260605_pptx_formula_fixed"></script>
-<script src="static/js/preprocess_page.js?v=20260601_standard_viz_guide04"></script>
+<script src="static/js/preprocess_page.js?v=20260610_dynamic_charts"></script>
 <script src="static/js/predict_page.js?v=20260521_predict02"></script>
 <script src="static/js/train_page.js?v=20260601_train_loss_random01"></script>
 <script src="static/js/evaluate_page.js?v=20260521_eval03"></script>
