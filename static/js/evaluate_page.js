@@ -62,6 +62,10 @@ function evaluateEmptyState() {
 }
 
 async function renderEvaluateShell() {
+  if (currentExperimentId() === "naive_bayes") {
+    await renderNbEvaluateShell();
+    return;
+  }
   evaluatePageSchema = evaluatePageSchema || await loadPanelSchema("evaluate", {
     title: "\u6a21\u578b\u8bc4\u4f30",
     sections: [],
@@ -530,6 +534,651 @@ function bindEvaluateCodeButtons() {
   window.evaluateCodeButtonsBound = true;
   document.addEventListener("click", event => {
     if (!event.target.closest("[data-evaluate-code]")) return;
-    openEvaluateCodeDrawer();
+    if (currentExperimentId() === "naive_bayes") {
+      openNbEvaluateCodeDrawer();
+    } else {
+      openEvaluateCodeDrawer();
+    }
+  });
+}
+
+// --------------------------------------------------------------------------
+// 朴素贝叶斯模型评估（动态分类阈值沙盒与 ECharts ROC/PR 曲线）
+// --------------------------------------------------------------------------
+
+let nbEvalThreshold = 0.50;
+let nbEvalChartType = "roc";
+let nbCachedRocPoints = null;
+let nbCachedPrPoints = null;
+let nbCachedAuc = null;
+
+async function renderNbEvaluateShell() {
+  document.querySelector(".shell").classList.remove("theory");
+  
+  clearPageTopSlot();
+  destroyDataGrid();
+  disposeCharts();
+  
+  if (!nbTrainData) {
+    $("rightPanel").innerHTML = `
+      <div class="right-title">操作提示</div>
+      <div class="control-card">
+        <p style="font-size: 13px; color: #868e96; line-height: 1.5; margin: 0;">评估页已锁。您需要先在第一步中点击开始训练以拟合模型，随后才可查看模型评估指标与变化曲线。</p>
+      </div>
+    `;
+    $("main").innerHTML = `
+      <section class="preprocess-prompt-card" style="padding: 40px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #fff; border-radius: 8px; margin: 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+        <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #495057;">请先训练模型</h3>
+        <p style="font-size: 13px; color: #868e96; max-width: 400px; margin: 0 0 20px 0; line-height: 1.5;">当前步骤依赖已训练的贝叶斯模型。请前往【模型训练】页面，点击【开始训练】按钮，拟合好分类器后再来进行评估。</p>
+      </section>
+    `;
+    return;
+  }
+  
+  // 注入教学版评估页面专用样式
+  if (!document.getElementById("nbEvalStyles")) {
+    const style = document.createElement("style");
+    style.id = "nbEvalStyles";
+    style.innerHTML = `
+      .nb-eval-container {
+        display: grid;
+        grid-template-columns: 1.10fr 0.90fr;
+        gap: 16px;
+        box-sizing: border-box;
+      }
+      .nb-eval-card {
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+        margin-bottom: 16px;
+        padding: 16px;
+      }
+      .nb-eval-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: #343a40;
+      }
+      .nb-eval-card h4 {
+        margin: 0 0 12px 0;
+        font-size: 12px;
+        font-weight: 500;
+        color: #868e96;
+        line-height: 1.4;
+      }
+      .nb-slider-container {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+      .nb-slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: bold;
+        color: #495057;
+      }
+      .nb-slider-input {
+        width: 100%;
+        cursor: pointer;
+        height: 6px;
+        border-radius: 3px;
+        outline: none;
+      }
+      .nb-cm-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .nb-cm-cell {
+        border-radius: 6px;
+        padding: 12px;
+        text-align: center;
+        border: 1px solid #dee2e6;
+        transition: all 0.2s ease;
+      }
+      .nb-cm-cell.correct {
+        background: #f4faf5;
+        border-color: #c3e6cb;
+        color: #155724;
+      }
+      .nb-cm-cell.mistake {
+        background: #fff9f4;
+        border-color: #ffe8d6;
+        color: #d9534f;
+      }
+      .nb-cm-cell-val {
+        font-size: 20px;
+        font-weight: 900;
+        margin-bottom: 2px;
+      }
+      .nb-cm-cell-lbl {
+        font-size: 11px;
+        color: #6c757d;
+      }
+      .nb-metric-indicator-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .nb-metric-card {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 8px;
+        text-align: center;
+      }
+      .nb-metric-card strong {
+        display: block;
+        font-size: 18px;
+        font-weight: 800;
+        color: #2b5c8f;
+      }
+      .nb-metric-card span {
+        display: block;
+        font-size: 10px;
+        color: #868e96;
+        margin-top: 4px;
+        white-space: nowrap;
+      }
+      .nb-scenario-btn {
+        background: #fff;
+        border: 1px solid #ced4da;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        color: #495057;
+      }
+      .nb-scenario-btn:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+      }
+      .nb-scenario-btn.active {
+        background: #2b5c8f;
+        color: #fff;
+        border-color: #2b5c8f;
+        font-weight: 600;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // 确保重置曲线缓存
+  nbCachedRocPoints = null;
+  nbCachedPrPoints = null;
+  nbCachedAuc = null;
+
+  // 渲染右侧面板
+  $("rightPanel").innerHTML = `
+    <div class="right-title">评估控制面板</div>
+    <div class="control-card">
+      <h3>核心评估代码</h3>
+      <button class="secondary-btn code-toggle-btn" type="button" data-evaluate-code="nb_metrics" style="width:100%; margin:0; padding:10px 0; font-size:13px; font-weight:600;">查看评估代码</button>
+    </div>
+  `;
+
+  // 渲染主工作区
+  $("main").innerHTML = `
+    <div style="padding: 10px 18px 24px 18px; overflow-y: auto; height: 100%; box-sizing: border-box;">
+      <div class="nb-eval-container">
+        
+        <!-- 左栏：阈值调节 & 动态混淆矩阵 -->
+        <div>
+          <div class="nb-eval-card">
+            <h3>分类阈值调节沙盒</h3>
+            <h4>拖动滑块改变分类后验概率阈值，观察混淆矩阵及各项指标的实时漂移。</h4>
+            
+            <div class="nb-slider-container">
+              <div class="nb-slider-header">
+                <span>分类决策阈值 (θ):</span>
+                <span id="nbEvalThresholdVal" style="font-size:16px; color:#2b5c8f; font-family:monospace;">0.50</span>
+              </div>
+              <input type="range" class="nb-slider-input" id="nbEvalThresholdSlider" min="0.00" max="1.00" step="0.01" value="0.50">
+              <div style="display:flex; justify-content:space-between; font-size:10px; color:#868e96; margin-top:4px;">
+                <span>倾向 🚀 ${nbTrainData.target_names[0]} (更宽松)</span>
+                <span>倾向 🚗 ${nbTrainData.target_names[1]} (更严格)</span>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 4px;">
+              <span style="font-size:11px; color:#6c757d; font-weight:bold; display:block; margin-bottom:6px;">业务快捷场景：</span>
+              <div style="display:flex; gap:8px;">
+                <button class="nb-scenario-btn" id="nbScenarioConserv">极端保守 (汽车不漏报)</button>
+                <button class="nb-scenario-btn active" id="nbScenarioDefault">默认均衡 (0.50)</button>
+                <button class="nb-scenario-btn" id="nbScenarioPrecise">极端精确 (航天不误判)</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nb-eval-card" style="margin-bottom:0;">
+            <h3>阈值评估联动指标</h3>
+            <div class="nb-metric-indicator-grid">
+              <div class="nb-metric-card"><strong id="nbEvalAcc">--</strong><span>准确率 (Accuracy)</span></div>
+              <div class="nb-metric-card"><strong id="nbEvalPrec">--</strong><span>精确率 (Precision)</span></div>
+              <div class="nb-metric-card"><strong id="nbEvalRecall">--</strong><span>召回率 (Recall)</span></div>
+              <div class="nb-metric-card"><strong id="nbEvalF1">--</strong><span>F1 值 (F1-score)</span></div>
+            </div>
+            
+            <h3>动态混淆矩阵 (分类测试集)</h3>
+            <div class="nb-cm-grid">
+              <div class="nb-cm-cell correct">
+                <div class="nb-cm-cell-val" id="nbCellTN">--</div>
+                <div class="nb-cm-cell-lbl">真阴性 TN (航天猜对)</div>
+              </div>
+              <div class="nb-cm-cell mistake">
+                <div class="nb-cm-cell-val" id="nbCellFP">--</div>
+                <div class="nb-cm-cell-lbl">假阳性 FP (航天认错)</div>
+              </div>
+              <div class="nb-cm-cell mistake">
+                <div class="nb-cm-cell-val" id="nbCellFN">--</div>
+                <div class="nb-cm-cell-lbl">假阴性 FN (汽车漏报)</div>
+              </div>
+              <div class="nb-cm-cell correct">
+                <div class="nb-cm-cell-val" id="nbCellTP">--</div>
+                <div class="nb-cm-cell-lbl">真阳性 TP (汽车猜对)</div>
+              </div>
+            </div>
+            
+            <div style="background:#eef4fa; border-left: 4px solid #2b5c8f; border-radius:4px; padding:10px 12px; margin-top:16px; font-size:11px; line-height:1.5; color:#555;" id="nbEvalSceneText">
+              当前为默认均衡阈值 0.50。
+            </div>
+          </div>
+        </div>
+        
+        <!-- 右栏：ECharts ROC/PR 曲线 -->
+        <div>
+          <section class="chart-card" style="margin: 0 0 16px 0;">
+            <div class="chart-head">
+              <div>
+                <div class="chart-title">交互式分类评估曲线</div>
+                <div class="chart-sub">红点随左侧滑块阈值在曲线轨道上平滑移动</div>
+              </div>
+            </div>
+            <div class="chart-toolbar">
+              <div class="segmented-control" role="group" aria-label="评估曲线切换">
+                <button class="seg-btn active" type="button" id="nbBtnShowRoc">ROC 曲线</button>
+                <button class="seg-btn" type="button" id="nbBtnShowPr">P-R 曲线</button>
+              </div>
+            </div>
+            <div class="chart" id="chart_nb_evaluate_curve" style="height: 340px; min-height: 340px; margin-bottom:5px;"></div>
+            <div style="padding: 0 18px 5px 18px; text-align: center; font-size: 12px; color: #495057; font-weight: bold;" id="nbEvalCurveStats">
+              <!-- AUC 统计 -->
+            </div>
+          </section>
+        </div>
+        
+      </div>
+    </div>
+  `;
+
+  // 绑定事件
+  $("nbEvalThresholdSlider").addEventListener("input", function() {
+    nbEvalThreshold = parseFloat(this.value);
+    $("nbEvalThresholdVal").textContent = nbEvalThreshold.toFixed(2);
+    updateNbEvalMetrics();
+  });
+
+  $("nbScenarioConserv").addEventListener("click", () => selectNbScenario(0.10, "nbScenarioConserv"));
+  $("nbScenarioDefault").addEventListener("click", () => selectNbScenario(0.50, "nbScenarioDefault"));
+  $("nbScenarioPrecise").addEventListener("click", () => selectNbScenario(0.90, "nbScenarioPrecise"));
+
+  $("nbBtnShowRoc").addEventListener("click", function() {
+    nbEvalChartType = "roc";
+    document.querySelectorAll(".segmented-control button").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    drawNbEvalCurve();
+  });
+
+  $("nbBtnShowPr").addEventListener("click", function() {
+    nbEvalChartType = "pr";
+    document.querySelectorAll(".segmented-control button").forEach(b => b.classList.remove("active"));
+    this.classList.add("active");
+    drawNbEvalCurve();
+  });
+
+  // 首次渲染
+  updateNbEvalMetrics();
+}
+
+function updateNbEvalMetrics() {
+  if (!nbTrainData || !nbTrainData.eval_samples) return;
+  const samples = nbTrainData.eval_samples;
+  const theta = nbEvalThreshold;
+  
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const true_label = s.true_label;
+    const prob = s.prob;
+    const pred_label = (prob >= theta) ? 1 : 0;
+    
+    if (true_label === 1 && pred_label === 1) tp++;
+    else if (true_label === 0 && pred_label === 1) fp++;
+    else if (true_label === 0 && pred_label === 0) tn++;
+    else if (true_label === 1 && pred_label === 0) fn++;
+  }
+  
+  const acc = (tp + tn) / samples.length;
+  const prec = (tp + fp > 0) ? (tp / (tp + fp)) : 1.0;
+  const recall = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
+  const f1 = (prec + recall > 0) ? (2 * prec * recall / (prec + recall)) : 0.0;
+  
+  $("nbCellTP").textContent = tp + " 篇";
+  $("nbCellFP").textContent = fp + " 篇";
+  $("nbCellTN").textContent = tn + " 篇";
+  $("nbCellFN").textContent = fn + " 篇";
+  
+  $("nbEvalAcc").textContent = (acc * 100).toFixed(1) + "%";
+  $("nbEvalPrec").textContent = (prec * 100).toFixed(1) + "%";
+  $("nbEvalRecall").textContent = (recall * 100).toFixed(1) + "%";
+  $("nbEvalF1").textContent = (f1 * 100).toFixed(1) + "%";
+  
+  let sceneDesc = "";
+  if (theta <= 0.20) {
+    sceneDesc = `📢 <strong>极端保守（不漏过任何汽车贴）</strong>：阈值 θ = ${theta.toFixed(2)}。汽车召回率高，但错杀了很多航天贴（假阳性 FP 增加，精确率 Precision 降低）。适用于极其重视“漏报”的场景。`;
+  } else if (theta >= 0.80) {
+    sceneDesc = `📢 <strong>极端精确（绝不把航天误判）</strong>：阈值 θ = ${theta.toFixed(2)}。汽车精确率高，但漏报了大量的汽车贴（假阴性 FN 增加，召回率 Recall 降低）。常用于拦截垃圾短信。`;
+  } else {
+    sceneDesc = `📢 <strong>均衡模式（默认）</strong>：阈值 θ = ${theta.toFixed(2)}。兼顾精确率与召回率，整体分类 F1-score 处于较高的最优状态。`;
+  }
+  $("nbEvalSceneText").innerHTML = sceneDesc;
+  
+  drawNbEvalCurve(true);
+}
+
+function selectNbScenario(val, btnId) {
+  nbEvalThreshold = val;
+  $("nbEvalThresholdSlider").value = val;
+  $("nbEvalThresholdVal").textContent = val.toFixed(2);
+  
+  document.querySelectorAll(".nb-scenario-btn").forEach(b => b.classList.remove("active"));
+  $(btnId).classList.add("active");
+  
+  updateNbEvalMetrics();
+}
+
+function calculateNbEvalCurves() {
+  if (!nbTrainData || !nbTrainData.eval_samples) return;
+  const samples = nbTrainData.eval_samples;
+  
+  const roc = [];
+  const pr = [];
+  
+  // 计算 AUC
+  let pos = samples.filter(x => x.true_label === 1);
+  let neg = samples.filter(x => x.true_label === 0);
+  let aucSum = 0;
+  if (pos.length > 0 && neg.length > 0) {
+    for (let i = 0; i < pos.length; i++) {
+      for (let j = 0; j < neg.length; j++) {
+        if (pos[i].prob > neg[j].prob) {
+          aucSum += 1.0;
+        } else if (pos[i].prob === neg[j].prob) {
+          aucSum += 0.5;
+        }
+      }
+    }
+    nbCachedAuc = aucSum / (pos.length * neg.length);
+  } else {
+    nbCachedAuc = 0.5;
+  }
+  
+  // 采集 101 个阈值点
+  for (let t = 0; t <= 100; t++) {
+    const theta = t / 100;
+    let tp = 0, fp = 0, tn = 0, fn = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      const true_label = s.true_label;
+      const prob = s.prob;
+      const pred_label = (prob >= theta) ? 1 : 0;
+      
+      if (true_label === 1 && pred_label === 1) tp++;
+      else if (true_label === 0 && pred_label === 1) fp++;
+      else if (true_label === 0 && pred_label === 0) tn++;
+      else if (true_label === 1 && pred_label === 0) fn++;
+    }
+    
+    const tpr = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
+    const fpr = (fp + tn > 0) ? (fp / (fp + tn)) : 0.0;
+    const prec = (tp + fp > 0) ? (tp / (tp + fp)) : 1.0;
+    const recall = tpr;
+    
+    roc.push([fpr, tpr, theta]);
+    pr.push([recall, prec, theta]);
+  }
+  
+  nbCachedRocPoints = roc.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  nbCachedPrPoints = pr.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
+function drawNbEvalCurve(onlyUpdateDot = false) {
+  const curveDom = $("chart_nb_evaluate_curve");
+  if (!curveDom || !nbTrainData) return;
+  
+  if (!nbCachedRocPoints || !nbCachedPrPoints) {
+    calculateNbEvalCurves();
+  }
+  
+  const isRoc = nbEvalChartType === "roc";
+  const points = isRoc ? nbCachedRocPoints : nbCachedPrPoints;
+  const lineData = points.map(p => [p[0], p[1]]);
+  
+  // 计算当前点
+  const theta = nbEvalThreshold;
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  const samples = nbTrainData.eval_samples;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const true_label = s.true_label;
+    const prob = s.prob;
+    const pred_label = (prob >= theta) ? 1 : 0;
+    
+    if (true_label === 1 && pred_label === 1) tp++;
+    else if (true_label === 0 && pred_label === 1) fp++;
+    else if (true_label === 0 && pred_label === 0) tn++;
+    else if (true_label === 1 && pred_label === 0) fn++;
+  }
+  
+  const tpr = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
+  const fpr = (fp + tn > 0) ? (fp / (fp + tn)) : 0.0;
+  const prec = (tp + fp > 0) ? (tp / (tp + fp)) : 1.0;
+  const recall = tpr;
+  
+  const curX = isRoc ? fpr : recall;
+  const curY = isRoc ? tpr : prec;
+  
+  if (isRoc) {
+    $("nbEvalCurveStats").innerHTML = `ROC 曲线下方面积 (AUC): <span style="color:#d9354f; font-size:14px; font-weight:800;">${nbCachedAuc.toFixed(4)}</span>`;
+  } else {
+    let apSum = 0;
+    const sorted = [...samples].sort((a,b) => b.prob - a.prob);
+    let correctCount = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].true_label === 1) {
+        correctCount++;
+        apSum += correctCount / (i + 1);
+      }
+    }
+    const ap = correctCount > 0 ? apSum / correctCount : 0.0;
+    $("nbEvalCurveStats").innerHTML = `平均精确率 (Average Precision, AP): <span style="color:#2b5c8f; font-size:14px; font-weight:800;">${ap.toFixed(4)}</span>`;
+  }
+  
+  if (onlyUpdateDot) {
+    const ch = echarts.getInstanceByDom(curveDom);
+    if (ch) {
+      ch.setOption({
+        series: [
+          {},
+          { data: [[curX, curY]] }
+        ]
+      });
+      return;
+    }
+  }
+  
+  const oldCh = echarts.getInstanceByDom(curveDom);
+  if (oldCh) oldCh.dispose();
+  
+  const ch = echarts.init(curveDom);
+  const color = isRoc ? '#d9354f' : '#2b5c8f';
+  const title = isRoc ? 'ROC 曲线' : 'P-R (Precision-Recall) 曲线';
+  const xName = isRoc ? '假阳性率 FPR' : '召回率 Recall';
+  const yName = isRoc ? '真阳性率 TPR' : '精确率 Precision';
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    grid: { left: '12%', right: '8%', top: '8%', bottom: '15%' },
+    xAxis: {
+      type: 'value',
+      name: xName,
+      nameLocation: 'middle',
+      nameGap: 24,
+      min: 0,
+      max: 1.0,
+      splitLine: { show: true, lineStyle: { type: 'dashed' } }
+    },
+    yAxis: {
+      type: 'value',
+      name: yName,
+      nameLocation: 'middle',
+      nameGap: 28,
+      min: 0,
+      max: 1.05,
+      splitLine: { show: true, lineStyle: { type: 'dashed' } }
+    },
+    series: [
+      {
+        name: title,
+        type: 'line',
+        data: lineData,
+        showSymbol: false,
+        lineStyle: { color: color, width: 3 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: color },
+            { offset: 1, color: '#ffffff' }
+          ]),
+          opacity: 0.12
+        }
+      },
+      {
+        name: '当前决策点',
+        type: 'effectScatter',
+        data: [[curX, curY]],
+        symbolSize: 10,
+        rippleEffect: { scale: 3, brushType: 'stroke' },
+        itemStyle: { color: '#e74c3c' },
+        tooltip: {
+          formatter: () => `<strong>当前阈值点:</strong><br>阈值 θ: ${theta.toFixed(2)}<br>${isRoc ? 'FPR' : 'Recall'}: ${curX.toFixed(3)}<br>${isRoc ? 'TPR' : 'Precision'}: ${curY.toFixed(3)}`
+        }
+      }
+    ]
+  };
+  
+  if (isRoc) {
+    option.series.push({
+      name: '随机猜测线',
+      type: 'line',
+      data: [[0, 0], [1, 1]],
+      showSymbol: false,
+      lineStyle: { type: 'dashed', color: '#868e96', width: 1.5 }
+    });
+  }
+  
+  ch.setOption(option);
+  charts.set("chart_nb_evaluate_curve", ch);
+}
+
+function openNbEvaluateCodeDrawer() {
+  closeEvaluateCodeDrawer();
+  
+  const theta = nbEvalThreshold;
+  const prec = parseFloat($("nbEvalPrec").textContent) / 100;
+  const recall = parseFloat($("nbEvalRecall").textContent) / 100;
+  const f1 = parseFloat($("nbEvalF1").textContent) / 100;
+  const acc = parseFloat($("nbEvalAcc").textContent) / 100;
+  const targetNames = nbTrainData.target_names;
+  
+  const spec = {
+    title: "模型评估（分类阈值调整与计算）",
+    operation: `在决策阈值 θ = ${theta.toFixed(2)} 下计算测试集各项指标`,
+    code: `
+# 朴素贝叶斯分类决策与评估计算过程
+
+import numpy as np
+from sklearn.metrics import classification_report, roc_curve, auc
+
+# 1. 拟合与预测概率
+# X_test_tfidf 为特征矩阵，clf 为训练好的 MultinomialNB 实例
+y_prob_c1 = clf.predict_proba(X_test_tfidf)[:, 1] # 取得属于类别 1 (汽车) 的后验概率
+
+# 2. 动态调节分类决策阈值
+threshold = ${theta.toFixed(2)}
+y_pred_dynamic = np.where(y_prob_c1 >= threshold, 1, 0)
+
+# 3. 计算混淆矩阵 (Confusion Matrix) 实时数值
+# y_test 为测试集真实标签
+tp = np.sum((y_test == 1) & (y_pred_dynamic == 1))
+fp = np.sum((y_test == 0) & (y_pred_dynamic == 1))
+fn = np.sum((y_test == 1) & (y_pred_dynamic == 0))
+tn = np.sum((y_test == 0) & (y_pred_dynamic == 0))
+
+# 4. 指标计算与当前数值展示
+accuracy = (tp + tn) / len(y_test)
+# 当前准确率 accuracy = ${acc.toFixed(4)}
+
+precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
+# 当前精确率 precision = ${prec.toFixed(4)}
+
+recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+# 当前召回率 recall = ${recall.toFixed(4)}
+
+f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+# 当前 F1 值 f1_score = ${f1.toFixed(4)}
+
+# 5. ROC 曲线与 AUC 计算
+fpr_arr, tpr_arr, thresholds = roc_curve(y_test, y_prob_c1)
+roc_auc = auc(fpr_arr, tpr_arr)
+# 测试集全局 AUC 面积 = ${nbCachedAuc.toFixed(4)}
+    `.trim(),
+    notes: [
+      `模型预测输出每个类别的后验概率，阈值 θ 就是分类器的“评判标准”。`,
+      `提升阈值使得判为类别 1 变严格，通常会提高 Precision (降低误报)，但 Recall 会降低 (漏报多)。`,
+      `ROC 曲线是不依赖单一阈值的全局性能曲线。对角线代表随机猜测，越往左上角凸起说明分类性能越好。`,
+      `AUC 是 ROC 曲线下的面积，在 [0.5, 1.0] 之间，越接近 1.0 分类器分类越完美。`
+    ]
+  };
+  
+  document.body.insertAdjacentHTML("beforeend", evaluateCodeDrawerHtml(spec));
+  
+  const drawer = document.querySelector(".code-drawer-backdrop");
+  drawer?.addEventListener("click", event => {
+    if (!event.target.closest("[data-code-close]")) return;
+    closeEvaluateCodeDrawer();
+  });
+  
+  drawer?.querySelector(".code-copy-btn")?.addEventListener("click", async event => {
+    const code = drawer.querySelector(".teaching-code code")?.textContent || "";
+    try {
+      await navigator.clipboard.writeText(code);
+      event.currentTarget.textContent = "已复制";
+      setTimeout(() => { event.currentTarget.textContent = "复制代码"; }, 1200);
+    } catch (_err) {
+      event.currentTarget.textContent = "复制失败";
+    }
   });
 }

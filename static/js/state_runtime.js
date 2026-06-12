@@ -136,6 +136,10 @@ function gridLayoutStorageKey(mode) {
   if (mode === "train_loss") return "trainLossGridLayoutV1";
   if (mode === "train_optimization") return "trainOptimizationGridLayoutV1";
   if (mode === "train_custom") return "trainCustomGridLayoutV1";
+  if (mode === "nb_train") return "nbTrainGridLayoutV1";
+  if (mode === "nb_prob") return "nbProbGridLayoutV1";
+  if (mode === "nb_predict") return "nbPredictGridLayoutV1";
+  if (mode === "nb_predict_page") return "nbPredictPageGridLayoutV1";
   if (mode === "evaluate") return "evaluateGridLayoutV1";
   if (mode === "predict") return "predictGridLayoutV3";
   if (mode === "preprocess_standard_viz") return "preprocessStandardVizGridLayoutV1";

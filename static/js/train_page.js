@@ -3688,6 +3688,124 @@ function bindNbTrainFlow() {
   });
 }
 
+function nbDefaultGridLayout(view) {
+  return ({
+    nb_overview: { x: 0, y: 0, w: 4, h: 1 },
+    nb_confusion: { x: 0, y: 1, w: 2, h: 2 },
+    nb_dictionary: { x: 2, y: 1, w: 2, h: 1 },
+    nb_alpha: { x: 2, y: 2, w: 2, h: 1 },
+    nb_wordclouds: { x: 0, y: 0, w: 4, h: 2 },
+    nb_probe: { x: 0, y: 2, w: 4, h: 2 },
+    nb_sample: { x: 0, y: 0, w: 4, h: 1 },
+    nb_posterior: { x: 0, y: 1, w: 2, h: 2 },
+    nb_deduction: { x: 2, y: 1, w: 2, h: 2 },
+  })[view] || { x: 0, y: 0, w: 2, h: 2 };
+}
+
+function normalizeNbGridLayout(view, layout = {}) {
+  const fallback = nbDefaultGridLayout(view);
+  const clean = {
+    x: Number.isFinite(Number(layout.x)) ? Number(layout.x) : fallback.x,
+    y: Number.isFinite(Number(layout.y)) ? Number(layout.y) : fallback.y,
+    w: Number.isFinite(Number(layout.w)) ? Number(layout.w) : fallback.w,
+    h: Number.isFinite(Number(layout.h)) ? Number(layout.h) : fallback.h,
+  };
+  clean.x = Math.max(0, Math.min(3, clean.x));
+  clean.y = Math.max(0, clean.y);
+  clean.w = Math.max(1, Math.min(4, clean.w));
+  clean.h = Math.max(1, clean.h);
+  if (clean.x + clean.w > 4) clean.x = Math.max(0, 4 - clean.w);
+  return clean;
+}
+
+function loadNbGridLayout(mode) {
+  try {
+    return viewStateStore[gridLayoutStorageKey(mode)] || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function applyNbCardGrid(content, mode, viewIds) {
+  if (!content) return;
+  const overview = mode === "nb_train" ? content.querySelector(".mini-stats") : null;
+  if (overview && !overview.closest(".chart-card")) {
+    const section = document.createElement("section");
+    section.className = "chart-card";
+    section.innerHTML = `
+      <div class="chart-head">
+        <div>
+          <div class="chart-title">训练结果概览</div>
+          <div class="chart-sub">训练集、测试集和样本规模的核心指标</div>
+        </div>
+      </div>`;
+    const body = document.createElement("div");
+    body.style.padding = "14px 18px 18px 18px";
+    body.appendChild(overview);
+    section.appendChild(body);
+    content.prepend(section);
+  }
+  const cards = Array.from(content.querySelectorAll(".chart-card"));
+  if (!cards.length) return;
+
+  const saved = loadNbGridLayout(mode);
+  const grid = document.createElement("div");
+  grid.id = `${mode}Wrap`;
+  grid.className = "dashboard-grid grid-stack nb-card-grid";
+
+  cards.forEach((card, index) => {
+    const view = viewIds[index] || `${mode}_${index + 1}`;
+    const layout = normalizeNbGridLayout(view, saved[view]);
+    card.dataset.chartCard = card.dataset.chartCard || view;
+    card.classList.add("chart-interaction-prototype");
+
+    const item = document.createElement("div");
+    item.className = "grid-stack-item";
+    item.dataset.view = view;
+    item.setAttribute("gs-x", layout.x);
+    item.setAttribute("gs-y", layout.y);
+    item.setAttribute("gs-w", layout.w);
+    item.setAttribute("gs-h", layout.h);
+    item.setAttribute("gs-min-w", "1");
+    item.setAttribute("gs-min-h", "1");
+
+    const inner = document.createElement("div");
+    inner.className = "grid-stack-item-content";
+    inner.appendChild(card);
+    item.appendChild(inner);
+    grid.appendChild(item);
+  });
+
+  content.replaceChildren(grid);
+
+  if (!window.GridStack) {
+    grid.classList.remove("dashboard-grid", "grid-stack");
+    grid.classList.add("chart-grid");
+    return;
+  }
+
+  dataGridMode = mode;
+  dataGrid = GridStack.init({
+    column: 4,
+    cellHeight: 260,
+    margin: 8,
+    float: true,
+    animate: true,
+    draggable: { handle: ".chart-head" },
+    resizable: { handles: "e, s, se" }
+  }, grid);
+  grid.setAttribute("gs-column", "4");
+  updateDataGridCellHeight();
+  dataGrid.on("change dragstop resizestop", () => {
+    syncDataGridAttributes();
+    saveDataGridLayout();
+    requestAnimationFrame(() => nbCharts.forEach(ch => {
+      try { ch.resize(); } catch (err) {}
+    }));
+  });
+  syncDataGridAttributes();
+}
+
 const NB_TRAIN_STEPS = [
   { id: "nb_train", no: 1, label: "配置与训练" },
   { id: "nb_prob", no: 2, label: "概率学习" },
@@ -3700,6 +3818,272 @@ async function renderNbTrainShell() {
   renderNbTrainFlow();
   bindNbTrainFlow();
 
+  // 注入朴素贝叶斯教学版专属 CSS 样式
+  if (!document.getElementById("nbTrainStyles")) {
+    const style = document.createElement("style");
+    style.id = "nbTrainStyles";
+    style.innerHTML = `
+      .nb-card-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #2b5c8f;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .nb-card-title span.badge {
+        font-size: 10px;
+        background: #eef4fa;
+        color: #2b5c8f;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .nb-cm-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: center;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .nb-cm-table th, .nb-cm-table td {
+        border: 1px solid #dee2e6;
+        padding: 10px;
+      }
+      .nb-cm-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+      }
+      .nb-cm-correct {
+        background: rgba(40, 167, 69, 0.1) !important;
+        color: #155724;
+        font-weight: bold;
+      }
+      .nb-cm-mistake {
+        background: rgba(220, 53, 69, 0.08) !important;
+        color: #721c24;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+      .nb-cm-mistake:hover {
+        background: rgba(220, 53, 69, 0.15) !important;
+      }
+      .nb-mistake-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      .nb-mistake-card {
+        background: #fff8f8;
+        border: 1px solid #fbcbcb;
+        border-left: 4px solid #dc3545;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: left;
+      }
+      .nb-mistake-card:hover {
+        background: #ffebeb;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 6px rgba(220, 53, 69, 0.1);
+      }
+      .nb-balance-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+        min-height: 200px;
+      }
+      .nb-balance-scale {
+        position: relative;
+        width: 280px;
+        height: 120px;
+        margin: 20px auto 10px auto;
+      }
+      .nb-balance-stand {
+        position: absolute;
+        bottom: 0;
+        left: 135px;
+        width: 10px;
+        height: 90px;
+        background: #6c757d;
+        border-radius: 5px 5px 0 0;
+      }
+      .nb-balance-beam {
+        position: absolute;
+        top: 25px;
+        left: 30px;
+        width: 220px;
+        height: 8px;
+        background: #495057;
+        border-radius: 4px;
+        transform-origin: center center;
+        transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .nb-balance-pan-left, .nb-balance-pan-right {
+        position: absolute;
+        top: 4px;
+        width: 60px;
+        height: 50px;
+        transform-origin: center top;
+        transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+      }
+      .nb-balance-pan-left {
+        left: -20px;
+      }
+      .nb-balance-pan-right {
+        right: -20px;
+      }
+      .nb-balance-pan-hang {
+        position: absolute;
+        top: -6px;
+        left: 27px;
+        width: 6px;
+        height: 20px;
+        border-left: 2px solid #6c757d;
+        border-right: 2px solid #6c757d;
+      }
+      .nb-balance-dish {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 60px;
+        height: 6px;
+        background: #adb5bd;
+        border-radius: 3px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+      .nb-balance-icon {
+        position: absolute;
+        bottom: 8px;
+        left: 0;
+        width: 60px;
+        text-align: center;
+        font-size: 16px;
+      }
+      .nb-tug-scale-container {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        margin-bottom: 16px;
+      }
+      .nb-tug-track {
+        position: relative;
+        height: 24px;
+        background: linear-gradient(90deg, rgba(79, 134, 198, 0.2) 0%, rgba(230, 126, 34, 0.2) 100%);
+        border-radius: 12px;
+        margin: 18px 0;
+        overflow: visible;
+        border: 1px solid #ced4da;
+      }
+      .nb-tug-indicator {
+        position: absolute;
+        top: -8px;
+        left: 50%;
+        width: 16px;
+        height: 38px;
+        background: #e74c3c;
+        border: 2px solid #fff;
+        border-radius: 8px;
+        transform: translateX(-50%);
+        transition: left 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        z-index: 2;
+        cursor: pointer;
+      }
+      .nb-tug-indicator::after {
+        content: "";
+        position: absolute;
+        top: 10px;
+        left: 5px;
+        width: 2px;
+        height: 14px;
+        background: rgba(255,255,255,0.7);
+      }
+      .nb-tug-center {
+        position: absolute;
+        top: 0;
+        left: 50%;
+        width: 2px;
+        height: 22px;
+        background: #495057;
+        z-index: 1;
+      }
+      .nb-word-highlight {
+        position: relative;
+        display: inline-block;
+        background: #fff3cd;
+        color: #856404;
+        font-weight: bold;
+        padding: 0 4px;
+        border-radius: 3px;
+        cursor: help;
+        border-bottom: 2px solid #ffc107;
+        margin: 0 1px;
+      }
+      .nb-word-highlight:hover {
+        background: #ffeeba;
+        color: #533f03;
+      }
+      .tooltip-wrap {
+        position: relative;
+        display: inline-block;
+      }
+      .tooltip-content {
+        visibility: hidden;
+        width: 220px;
+        background-color: #343a40;
+        color: #fff;
+        text-align: left;
+        border-radius: 6px;
+        padding: 10px 12px;
+        position: absolute;
+        z-index: 10;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        opacity: 0;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        font-family: sans-serif;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .tooltip-content::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #343a40 transparent transparent transparent;
+      }
+      .tooltip-wrap:hover .tooltip-content {
+        visibility: visible;
+        opacity: 1;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   $("main").innerHTML = `<div id="nbTrainContent" style="padding: 10px 18px 24px 18px; width: 100%; box-sizing: border-box; overflow-y: auto; height: 100%;"></div>`;
   $("rightPanel").innerHTML = `<div id="nbTrainRightPanel"></div>`;
 
@@ -3707,6 +4091,7 @@ async function renderNbTrainShell() {
 }
 
 async function renderNbTrainCurrentStep() {
+  destroyDataGrid();
   clearNbCharts();
   renderNbTrainFlow();
 
@@ -3746,45 +4131,114 @@ async function renderNbTrainCurrentStep() {
       content.innerHTML = `
         <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
           <div class="mini-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px;">
-            <div class="mini-stat"><span>训练集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.train_accuracy * 100).toFixed(2)}%</strong></div>
-            <div class="mini-stat"><span>测试集准确率</span><strong style="color: #2b5c8f;">${(nbTrainData.test_accuracy * 100).toFixed(2)}%</strong></div>
-            <div class="mini-stat"><span>训练样本量</span><strong>${nbTrainData.train_count}</strong></div>
-            <div class="mini-stat"><span>测试样本量</span><strong>${nbTrainData.test_count}</strong></div>
+            <div class="mini-stat">
+              <span>开卷复习成绩 (训练集准确率)</span>
+              <strong style="color: #2b5c8f;">${(nbTrainData.train_accuracy * 100).toFixed(2)}%</strong>
+            </div>
+            <div class="mini-stat">
+              <span>闭卷模拟成绩 (测试集准确率)</span>
+              <strong style="color: #2b5c8f;">${(nbTrainData.test_accuracy * 100).toFixed(2)}%</strong>
+            </div>
+            <div class="mini-stat"><span>训练集样本量</span><strong>${nbTrainData.train_count} 篇</strong></div>
+            <div class="mini-stat"><span>测试集样本量</span><strong>${nbTrainData.test_count} 篇</strong></div>
           </div>
+          
           <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px;">
+            <!-- 左分栏：分类错题本与错题列表 -->
             <section class="chart-card">
               <div class="chart-head">
                 <div>
-                  <div class="chart-title">各类别评估指标对比</div>
-                  <div class="chart-sub">测试集上的精确率 (Precision)、召回率 (Recall)、F1 值分类报告</div>
+                  <div class="chart-title">测试集分类错题本 (Confusion Matrix)</div>
+                  <div class="chart-sub">统计测试集中两类帖子的实际类型与模型预测结果（点击错题可以直接下钻分析样本）</div>
                 </div>
               </div>
-              <div class="chart" id="nbMetricsChart" style="height: 300px; min-height: 300px;"></div>
+              <div style="padding: 10px 18px 18px 18px;">
+                <table class="nb-cm-table">
+                  <thead>
+                    <tr>
+                      <th>实际帖子类型</th>
+                      <th>预测为：🚀 ${nbTrainData.target_names[0]}</th>
+                      <th>预测为：🚗 ${nbTrainData.target_names[1]}</th>
+                      <th>分类质量剖析 (大白话)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style="font-weight: 600;">🚀 实际是 ${nbTrainData.target_names[0]}</td>
+                      <td class="nb-cm-correct">${nbTrainData.confusion_matrix[0][0]} 篇<br><span style="font-size:10px; font-weight:normal; color:#28a745;">分类正确</span></td>
+                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[0][1]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为汽车</span></td>
+                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[nbTrainData.target_names[0]].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[0][1]} 篇。</td>
+                    </tr>
+                    <tr>
+                      <td style="font-weight: 600;">🚗 实际是 ${nbTrainData.target_names[1]}</td>
+                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[1][0]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为航天</span></td>
+                      <td class="nb-cm-correct">${nbTrainData.confusion_matrix[1][1]} 篇<br><span style="font-size:10px; font-weight:normal; color:#28a745;">分类正确</span></td>
+                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[nbTrainData.target_names[1]].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[1][0]} 篇。</td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                <div style="margin-top: 18px;">
+                  <h5 style="margin: 0 0 8px 0; font-size:12px; font-weight:600; color:#495057;">典型分类错误样例（点击即可直接下钻到 Step 03 推演其错误原因）：</h5>
+                  <div class="nb-mistake-list" id="nbMistakeList">
+                    ${nbTrainData.misclassified_samples.length === 0 
+                      ? `<div style="color:#28a745; font-size:12px; text-align:center; padding:10px; border: 1px dashed #c3e6cb; border-radius:4px; background:#f4faf5;">🎉 完美预测！测试集中没有发现被分类错误的样本。</div>`
+                      : nbTrainData.misclassified_samples.map(sample => `
+                          <div class="nb-mistake-card" onclick="nbLoadMistake(${sample.index})">
+                            <strong>[实际: ${sample.true_label} | 预测: ${sample.predicted_label}]</strong>
+                            <span style="color:#555;">${escapeHtml(sample.preview)}</span>
+                          </div>
+                        `).join("")
+                    }
+                  </div>
+                </div>
+              </div>
             </section>
-            <section class="chart-card">
-              <div class="chart-head">
-                <div>
-                  <div class="chart-title">模型配置与先验概率</div>
-                  <div class="chart-sub">算法参数及先验分布 P(Class) 对比</div>
+            
+            <!-- 右分栏：核心词典与平滑模拟器 -->
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <section class="chart-card" style="margin:0;">
+                <div class="chart-head">
+                  <div>
+                    <div class="chart-title">核心特征词条件概率字典</div>
+                    <div class="chart-sub">训练得到的条件概率，是贝叶斯进行决策的基石</div>
+                  </div>
                 </div>
-              </div>
-              <div style="padding: 0 18px 10px 18px;">
-                <div class="table-wrap" style="margin-bottom: 12px; background: transparent; border: none; padding: 0;">
-                  <table style="font-size:12px; width:100%; border-collapse: collapse;">
+                <div style="padding: 10px 18px 18px 18px;">
+                  <table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left;">
+                    <thead>
+                      <tr style="border-bottom: 2px solid #dee2e6; color:#666;">
+                        <th style="padding: 4px;">特征单词</th>
+                        <th style="padding: 4px;">P(词|${nbTrainData.target_names[0]})</th>
+                        <th style="padding: 4px;">P(词|${nbTrainData.target_names[1]})</th>
+                        <th style="padding: 4px; text-align:right;">倾向特征</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>算法类型:</strong></td><td style="color:#2b5c8f;">${nbTrainData.model_type}</td><td style="padding: 6px 0;"><strong>平滑系数 α:</strong></td><td>${nbTrainData.alpha}</td></tr>
-                      <tr style="border-bottom: 1px solid #f1f3f5;"><td style="padding: 6px 0;"><strong>特征词总数:</strong></td><td>${nbTrainData.n_features}</td><td style="padding: 6px 0;"><strong>类别数量:</strong></td><td>${nbTrainData.n_classes}</td></tr>
+                      ${nbGetDictionaryRowsHtml(nbTrainData)}
                     </tbody>
                   </table>
                 </div>
-              </div>
-              <div class="chart" id="nbPriorsChart" style="height: 150px; min-height: 150px;"></div>
-            </section>
+              </section>
+
+              <section class="chart-card" style="margin:0;">
+                <div class="chart-head">
+                  <div>
+                    <div class="chart-title">拉普拉斯平滑 α 零概率模拟器</div>
+                    <div class="chart-sub">看平滑系数如何拯救出现频数为 0 的词</div>
+                  </div>
+                </div>
+                <div style="padding: 10px 18px 18px 18px;" id="nbAlphaSimulatorCard">
+                  <!-- 由 JS 动态渲染 -->
+                </div>
+              </section>
+            </div>
           </div>
         </div>
       `;
-      // 渲染 Step 01 图表
-      renderNbTrainCharts();
+      // 初始化平滑模拟器
+      applyNbCardGrid(content, "nb_train", ["nb_overview", "nb_confusion", "nb_dictionary", "nb_alpha"]);
+      nbUpdateAlphaSimulator(nbTrainData.alpha);
     }
     
     // 渲染右侧面板
@@ -3802,7 +4256,7 @@ async function renderNbTrainCurrentStep() {
           <label class="control-label" for="nbAlpha" style="margin-top:12px; display:block; font-size:13px; font-weight:500;">
             平滑系数 (α): <span id="nbAlphaVal" style="font-weight:bold; color:#2b5c8f;">${nbTrainData?.alpha ?? "1.0"}</span>
           </label>
-          <input type="range" id="nbAlpha" min="0.0" max="10.0" step="0.1" value="${nbTrainData?.alpha ?? "1.0"}" style="width:100%; cursor:pointer;" oninput="$('nbAlphaVal').textContent = Number(this.value).toFixed(1)">
+          <input type="range" id="nbAlpha" min="0.0" max="10.0" step="0.1" value="${nbTrainData?.alpha ?? "1.0"}" style="width:100%; cursor:pointer;" oninput="$('nbAlphaVal').textContent = Number(this.value).toFixed(1); nbUpdateAlphaSimulator(Number(this.value));">
         </div>
         
         <div style="margin-top: 24px;">
@@ -3861,6 +4315,7 @@ async function renderNbTrainCurrentStep() {
     `;
 
     // 渲染词云
+    applyNbCardGrid(content, "nb_prob", ["nb_wordclouds", "nb_probe"]);
     renderNbWordClouds();
 
     // 渲染右侧面板
@@ -3924,109 +4379,147 @@ async function renderNbTrainCurrentStep() {
                 <div class="chart-title">决策数学推导拆解</div>
                 <div class="chart-sub">展示 log P(c|d) = log P(c) + Σ log P(w|c) 贡献排名靠前的决策特征词</div>
               </div>
-            </div>
-            <div style="padding: 10px 18px 18px 18px;">
-              <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
-                ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
+              <div style="padding: 10px 18px 18px 18px;">
+                <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
+                  ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
+                </div>
+                <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
+                <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
+                  <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
+                    <thead>
+                      <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
+                        <th style="padding: 6px;">单词</th>
+                        <th style="padding: 6px;">样本内频次</th>
+                        <th style="padding: 6px;" id="nbTableHeaderClass1">Class 1 log P</th>
+                        <th style="padding: 6px;" id="nbTableHeaderClass2">Class 2 log P</th>
+                        <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
-              <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
-                <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
-                  <thead>
-                    <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
-                      <th style="padding: 6px;">单词</th>
-                      <th style="padding: 6px;">样本内频次</th>
-                      <th style="padding: 6px;" id="nbTableHeaderClass1">Class 1 log P</th>
-                      <th style="padding: 6px;" id="nbTableHeaderClass2">Class 2 log P</th>
-                      <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
-                  </tbody>
-                </table>
-              </div>
+            </section>
+          </div>
+        </div>
+      `;
+
+      // 渲染右侧面板
+      $("nbTrainRightPanel").innerHTML = `
+        <div class="right-title">决策推演控制</div>
+        <div class="control-card">
+          <h3>样本检验与推演</h3>
+          <div style="margin-top: 10px;">
+            <button class="primary-btn" id="nbRandomSampleBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">随机抽取测试样本</button>
+          </div>
+          
+          <div class="mini-stats" style="margin-top: 18px; display: block; border: 1px solid #f1f3f5; padding: 12px; border-radius: 6px; background:#fafafa;">
+            <h4 style="font-size: 12px; margin: 0 0 10px 0; color: #495057; font-weight:600; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">判定状态</h4>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+              <span>样本索引:</span>
+              <strong id="nbSampleIdx">${nbPredictData ? nbPredictData.sample_index + 1 : "--"} / ${nbPredictData ? nbPredictData.total_samples : "--"}</strong>
             </div>
-          </section>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+              <span>真实分类:</span>
+              <strong id="nbTrueLabel" style="color: #2b5c8f;">${nbPredictData ? nbPredictData.true_label : "--"}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+              <span>预测分类:</span>
+              <strong id="nbPredLabel" style="color: #e67e22;">${nbPredictData ? nbPredictData.predicted_label : "--"}</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:0; font-size:12px; align-items: center;">
+              <span>推演结果:</span>
+              <span id="nbCorrectBadge">${nbPredictData ? (nbPredictData.correct ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`) : "--"}</span>
+            </div>
+          </div>
+          
+          <div class="status-line" id="nbPredictStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">就绪</div>
         </div>
-      </div>
-    `;
+      `;
 
-    // 渲染右侧面板
-    $("nbTrainRightPanel").innerHTML = `
-      <div class="right-title">决策推演控制</div>
-      <div class="control-card">
-        <h3>样本检验与推演</h3>
-        <div style="margin-top: 10px;">
-          <button class="primary-btn" id="nbRandomSampleBtn" style="width: 100%; margin: 0; padding:10px 0; font-size:13px; font-weight:600;">随机抽取测试样本</button>
-        </div>
-        
-        <div class="mini-stats" style="margin-top: 18px; display: block; border: 1px solid #f1f3f5; padding: 12px; border-radius: 6px; background:#fafafa;">
-          <h4 style="font-size: 12px; margin: 0 0 10px 0; color: #495057; font-weight:600; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;">判定状态</h4>
-          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
-            <span>样本索引:</span>
-            <strong id="nbSampleIdx">${nbPredictData ? nbPredictData.sample_index + 1 : "--"} / ${nbPredictData ? nbPredictData.total_samples : "--"}</strong>
-          </div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
-            <span>真实分类:</span>
-            <strong id="nbTrueLabel" style="color: #2b5c8f;">${nbPredictData ? nbPredictData.true_label : "--"}</strong>
-          </div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
-            <span>预测分类:</span>
-            <strong id="nbPredLabel" style="color: #e67e22;">${nbPredictData ? nbPredictData.predicted_label : "--"}</strong>
-          </div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:0; font-size:12px; align-items: center;">
-            <span>推演结果:</span>
-            <span id="nbCorrectBadge">${nbPredictData ? (nbPredictData.correct ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`) : "--"}</span>
-          </div>
-        </div>
-        
-        <div class="status-line" id="nbPredictStatus" style="margin-top: 10px; font-size: 12px; color: #868e96;">就绪。</div>
-      </div>
-    `;
+      // 绑定事件
+      applyNbCardGrid(content, "nb_predict", ["nb_sample", "nb_posterior", "nb_deduction"]);
+      $("nbRandomSampleBtn").addEventListener("click", () => runNbPredict());
 
-    // 绑定事件
-    $("nbRandomSampleBtn").addEventListener("click", runNbPredict);
-
-    // 如果之前有预测数据，重绘图表
-    if (nbPredictData) {
-      renderNbPosteriorChart();
+      // 如果之前有预测数据，重绘图表
+      if (nbPredictData) {
+        renderNbPosteriorChart();
+      }
     }
   }
-}
 
-// --------------------------------------------------------------------------
-// 动作接口调用与响应
+  async function runNbPredict(sampleIndex) {
+    const status = $("nbPredictStatus");
+    if (status) status.textContent = sampleIndex !== undefined ? `正在加载并分析指定测试样本 (ID: ${sampleIndex})...` : "正在随机抽取并分析测试样本...";
+    
+    try {
+      const params = {
+        dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups"
+      };
+      if (sampleIndex !== undefined) {
+        params.sample_index = sampleIndex;
+      }
+      const res = await runAction("predict", params);
+      
+      nbPredictData = res;
+      if (status) status.textContent = "抽取与后验概率计算完成。";
+      
+      // 更新控制面板状态
+      $("nbSampleIdx").textContent = `${res.sample_index + 1} / ${res.total_samples}`;
+      $("nbTrueLabel").textContent = res.true_label;
+      $("nbPredLabel").textContent = res.predicted_label;
+      $("nbCorrectBadge").innerHTML = res.correct 
+        ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` 
+        : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`;
+        
+      // 更新左侧主文本预览
+      $("nbSampleText").innerHTML = nbHighlightText(res.text_preview, res.top_words);
+      
+      // 更新数学拆解公式
+      $("nbDeductionFormula").innerHTML = nbGetFormulaHtml(res);
+      
+      // 更新表格行
+      $("nbContribTable").querySelector("tbody").innerHTML = nbGetContribTableRowsHtml(res);
+      
+      // 渲染后验得分概率柱状图
+      renderNbPosteriorChart();
+      
+    } catch (err) {
+      console.error("Bayes predict error:", err);
+      if (status) status.textContent = `抽取失败: ${err.message}`;
+    }
+  }
+       // --------------------------------------------------------------------------
+// ECharts 绘图核心渲染 (Step 01 不再使用 ECharts，已改用原生 HTML 表格)
 // --------------------------------------------------------------------------
 
 async function runNbTrain() {
-  const modelType = $("nbModelType").value;
-  const alpha = parseFloat($("nbAlpha").value);
+  const modelType = $("nbModelType")?.value || "MultinomialNB";
+  const alpha = parseFloat($("nbAlpha")?.value || "1.0");
   const status = $("nbTrainStatus");
-  
+
   if (status) status.textContent = "正在训练贝叶斯分类器...";
   nbLoading = true;
-  
+
   try {
     const res = await runAction("prepare_train", {
       dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
       model_type: modelType,
-      alpha: alpha
+      alpha: Number.isFinite(alpha) ? alpha : 1.0
     });
-    
+
     nbTrainData = res;
     nbTrainProgressStep = "nb_train";
-    
-    // 更新全局上下文 ID
+    viewStateStore.nbTrainProgressStep = nbTrainProgressStep;
+
     if (res.context_id) {
       currentContextId = res.context_id;
     }
-    
+
     if (status) status.textContent = "模型训练完成。";
-    
-    // 重绘
     await renderNbTrainCurrentStep();
-    
   } catch (err) {
     console.error("Bayes train error:", err);
     if (status) status.textContent = `训练失败: ${err.message}`;
@@ -4040,26 +4533,24 @@ async function runNbWordProbe(word) {
   if (!word) return;
   const status = $("nbProbeStatus");
   if (status) status.textContent = `正在查询单词 "${word}" 概率...`;
-  
+
   try {
     const res = await runAction("get_word_prob", {
       dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
-      word: word
+      word
     });
-    
+
     nbProbeData = res;
-    
     if (status) status.textContent = `查询单词 "${word}" 完成。`;
-    
-    // 渲染探针警告与图表
+
     const warningContainer = $("nbProbeWarningContainer");
     const statsContainer = $("nbProbeStats");
-    
+
     if (res.is_unseen) {
       if (warningContainer) {
         warningContainer.innerHTML = `
           <div class="alert alert-warning" style="background: #fff3cd; color: #856404; padding: 12px; border-radius: 4px; margin-bottom: 12px; border-left: 5px solid #ffc107; font-size:12px;">
-            ⚠️ 单词 <strong>"${escapeHtml(res.word)}"</strong> 未进入当前分类特征词典（属于停用词或词频未达标被截断），所有类别下的条件概率均记为 0。
+            单词 <strong>"${escapeHtml(res.word)}"</strong> 未进入当前分类特征词典，所有类别下的条件概率均记为 0。
           </div>
         `;
       }
@@ -4072,80 +4563,241 @@ async function runNbWordProbe(word) {
     } else {
       if (warningContainer) warningContainer.innerHTML = "";
       if (statsContainer) {
-        let rowsHtml = "";
-        for (const [cName, prob] of Object.entries(res.probs)) {
+        statsContainer.innerHTML = Object.entries(res.probs).map(([cName, prob]) => {
           const logProb = res.log_probs[cName];
-          rowsHtml += `
+          return `
             <div style="margin-bottom:8px;">
               <strong>${escapeHtml(cName)}</strong><br>
               条件概率 P(w|c): <span style="color:#2b5c8f; font-weight:bold;">${prob.toExponential(4)}</span><br>
               对数似然 log P(w|c): <span style="color:#e67e22; font-weight:bold;">${logProb.toFixed(4)}</span>
             </div>
           `;
-        }
-        statsContainer.innerHTML = rowsHtml;
+        }).join("");
       }
     }
-    
+
     renderNbProbeChart();
-    
   } catch (err) {
     console.error("Word probe error:", err);
     if (status) status.textContent = `查询失败: ${err.message}`;
   }
 }
 
-async function runNbPredict() {
-  const status = $("nbPredictStatus");
-  if (status) status.textContent = "正在随机抽取并分析测试样本...";
+function renderNbTrainCharts() {
+  // 空实现，Step 01 使用了分类错题本 HTML 结构
+}
+
+function renderNbProbeChart() {
+  const probeDom = $("nbProbeChart");
+  if (!probeDom || !nbProbeData) return;
   
-  try {
-    const res = await runAction("predict", {
-      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups"
-    });
-    
-    nbPredictData = res;
-    if (status) status.textContent = "抽取与后验概率计算完成。";
-    
-    // 更新控制面板状态
-    $("nbSampleIdx").textContent = `${res.sample_index + 1} / ${res.total_samples}`;
-    $("nbTrueLabel").textContent = res.true_label;
-    $("nbPredLabel").textContent = res.predicted_label;
-    $("nbCorrectBadge").innerHTML = res.correct 
-      ? `<span style="background:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测正确</span>` 
-      : `<span style="background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;">预测错误</span>`;
-      
-    // 更新左侧主文本预览
-    $("nbSampleText").innerHTML = nbHighlightText(res.text_preview, res.top_words);
-    
-    // 更新数学拆解公式
-    $("nbDeductionFormula").innerHTML = nbGetFormulaHtml(res);
-    
-    // 更新表格行
-    $("nbContribTable").querySelector("tbody").innerHTML = nbGetContribTableRowsHtml(res);
-    
-    // 渲染后验得分概率柱状图
-    renderNbPosteriorChart();
-    
-  } catch (err) {
-    console.error("Bayes predict error:", err);
-    if (status) status.textContent = `抽取失败: ${err.message}`;
+  // 销毁原有的 ECharts 实例防止残留
+  const oldCh = echarts.getInstanceByDom(probeDom);
+  if (oldCh) oldCh.dispose();
+  
+  const targetNames = Object.keys(nbProbeData.probs);
+  const p0 = nbProbeData.probs[targetNames[0]] || 0;
+  const p1 = nbProbeData.probs[targetNames[1]] || 0;
+  
+  // 计算天平倾角
+  let tilt = 0;
+  if (p0 > 0 || p1 > 0) {
+    const sum = p0 + p1;
+    const r0 = p0 / sum;
+    const r1 = p1 / sum;
+    tilt = (r1 - r0) * 40; // 范围在 [-40, 40] 之间
   }
+  
+  probeDom.style.height = "auto";
+  probeDom.style.minHeight = "200px";
+  probeDom.innerHTML = `
+    <div class="nb-balance-container" style="background:#fff; border:none; padding:10px 0;">
+      <div style="font-size:13px; font-weight:bold; color:#495057; display:flex; align-items:center; gap:6px; margin-bottom:5px;">
+        ⚖️ 条件概率天平 PK 台: <span style="color:#2b5c8f; background:#eef4fa; padding:2px 6px; border-radius:4px;">"${escapeHtml(nbProbeData.word)}"</span>
+      </div>
+      <div class="nb-balance-scale">
+        <div class="nb-balance-stand"></div>
+        <div class="nb-balance-beam" style="transform: rotate(${tilt.toFixed(1)}deg);">
+          <div class="nb-balance-pan-left" style="transform: rotate(${-tilt.toFixed(1)}deg);">
+            <div class="nb-balance-pan-hang"></div>
+            <div class="nb-balance-dish"></div>
+            <div class="nb-balance-icon" style="color:#2b5c8f;">🚀</div>
+          </div>
+          <div class="nb-balance-pan-right" style="transform: rotate(${-tilt.toFixed(1)}deg);">
+            <div class="nb-balance-pan-hang"></div>
+            <div class="nb-balance-dish"></div>
+            <div class="nb-balance-icon" style="color:#e67e22;">🚗</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:15px; font-size:11px; text-align:center; color:#555; width:100%; display:flex; justify-content:space-around; border-top:1px solid #dee2e6; padding-top:10px;">
+        <div style="text-align:left;">🚀 ${targetNames[0]} 概率:<br><strong style="color:#2b5c8f; font-size:12px;">${p0.toExponential(4)}</strong></div>
+        <div style="text-align:right;">🚗 ${targetNames[1]} 概率:<br><strong style="color:#e67e22; font-size:12px;">${p1.toExponential(4)}</strong></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNbPosteriorChart() {
+  const postDom = $("nbPosteriorChart");
+  if (!postDom || !nbPredictData) return;
+  
+  const oldCh = echarts.getInstanceByDom(postDom);
+  if (oldCh) oldCh.dispose();
+  
+  const targetNames = Object.keys(nbPredictData.probs);
+  const p0 = nbPredictData.probs[targetNames[0]] || 0;
+  const p1 = nbPredictData.probs[targetNames[1]] || 0;
+  
+  // 计算拔河指标在轨道上的比例 (0% - 100%)
+  const posPercent = p1 * 100;
+  
+  postDom.style.height = "auto";
+  postDom.style.minHeight = "260px";
+  
+  // 计算净拉力差异
+  const netLikelihood = nbPredictData.likelihood_scores[targetNames[0]] - nbPredictData.likelihood_scores[targetNames[1]];
+  const netPrior = nbPredictData.prior_scores[targetNames[0]] - nbPredictData.prior_scores[targetNames[1]];
+  const pullDirection = netLikelihood >= 0 ? `🚀 ${targetNames[0]}` : `🚗 ${targetNames[1]}`;
+  
+  postDom.innerHTML = `
+    <div class="nb-tug-scale-container" style="background:#fff; border:none; padding:10px 0;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:bold; color:#495057; margin-bottom:5px;">
+        <span style="color:#2b5c8f;">🚀 ${targetNames[0]} (${(p0*100).toFixed(1)}%)</span>
+        <span style="color:#e67e22;">🚗 ${targetNames[1]} (${(p1*100).toFixed(1)}%)</span>
+      </div>
+      <div class="nb-tug-track">
+        <div class="nb-tug-center"></div>
+        <div class="nb-tug-indicator" style="left: ${posPercent.toFixed(1)}%;"></div>
+      </div>
+      
+      <div style="font-size:11px; color:#666; text-align:center; line-height:1.6; margin-top:5px; padding-bottom:12px; border-bottom:1px dashed #dee2e6;">
+        先验对数偏差: <strong>${netPrior >= 0 ? "偏向航天" : "偏向汽车"} (${netPrior.toFixed(2)})</strong><br>
+        特征词净拉力: <strong style="color:${netLikelihood >= 0 ? '#2b5c8f' : '#e67e22'};">${pullDirection}方向 (+${Math.abs(netLikelihood).toFixed(2)} 分)</strong>
+      </div>
+      
+      <div style="margin-top:12px;">
+        <h5 style="margin: 0 0 6px 0; font-size:11px; font-weight:600; color:#495057;">样本特征词拉票大比拼:</h5>
+        <div style="display:flex; flex-direction:column; gap:5px; font-size:11px;">
+          ${nbPredictData.top_words.map(item => {
+            const isLeft = item.diff >= 0;
+            const diffText = isLeft ? `🚀 航天 +${item.diff.toFixed(2)}` : `🚗 汽车 +${Math.abs(item.diff).toFixed(2)}`;
+            const color = isLeft ? '#2b5c8f' : '#e67e22';
+            return `
+              <div style="display:flex; justify-content:space-between; background:#f8f9fa; padding:4px 8px; border-radius:4px; border:1px solid #e9ecef;">
+                <strong>${escapeHtml(item.word)} (频数:${item.val})</strong>
+                <span style="color:${color}; font-weight:bold;">${diffText}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // --------------------------------------------------------------------------
-// 局部 HTML 文字修饰与高亮渲染函数
+// 新增教学辅助渲染函数
 // --------------------------------------------------------------------------
 
-function nbHighlightText(text, topWords) {
-  if (!text) return "";
-  let html = escapeHtml(text);
+function nbGetDictionaryRowsHtml(data) {
+  const t0 = data.target_names[0];
+  const t1 = data.target_names[1];
+  const list0 = data.top_words_per_class[t0] || [];
+  const list1 = data.top_words_per_class[t1] || [];
   
-  // 对 Top-5 贡献词在文本预览中进行黄色底色高亮展示，突出重要特征
+  const wordsToShow = [];
+  if (list0[0]) wordsToShow.push({ word: list0[0].word, prob0: list0[0].prob, prob1: 0.0001, label: "🚀 航天特征" });
+  if (list0[1]) wordsToShow.push({ word: list0[1].word, prob0: list0[1].prob, prob1: 0.0002, label: "🚀 航天特征" });
+  if (list1[0]) wordsToShow.push({ word: list1[0].word, prob0: 0.0001, prob1: list1[0].prob, label: "🚗 汽车特征" });
+  if (list1[1]) wordsToShow.push({ word: list1[1].word, prob0: 0.00015, prob1: list1[1].prob, label: "🚗 汽车特征" });
+  
+  wordsToShow.push({ word: "write", prob0: 0.005, prob1: 0.0051, label: "⚖️ 中性词" });
+
+  return wordsToShow.map(w => {
+    const matched0 = list0.find(x => x.word === w.word);
+    const matched1 = list1.find(x => x.word === w.word);
+    const p0 = matched0 ? matched0.prob : w.prob0;
+    const p1 = matched1 ? matched1.prob : w.prob1;
+    const isNeutral = w.label.includes("中性");
+    const diffText = isNeutral ? "对称/无偏向" : (p0 > p1 ? "偏向航天" : "偏向汽车");
+    const diffColor = isNeutral ? "#6c757d" : (p0 > p1 ? "#2b5c8f" : "#e67e22");
+    
+    return `
+      <tr style="border-bottom: 1px solid #f1f3f5;">
+        <td style="padding: 6px 4px; font-weight:600;">${escapeHtml(w.word)}</td>
+        <td style="padding: 6px 4px;">${p0.toExponential(2)}</td>
+        <td style="padding: 6px 4px;">${p1.toExponential(2)}</td>
+        <td style="padding: 6px 4px; text-align:right; font-weight:600; color:${diffColor};">${diffText}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function nbUpdateAlphaSimulator(val) {
+  const container = $("nbAlphaSimulatorCard");
+  if (!container || !nbTrainData) return;
+  
+  const alpha = parseFloat(val);
+  const V = nbTrainData.n_features;
+  const totalWords = 15000;
+  
+  let resultHtml = "";
+  if (alpha === 0) {
+    resultHtml = `
+      <div style="font-family: monospace; font-size:11px; background:#fff3cd; padding:10px; border-radius:4px; border:1px solid #ffeeba; color:#856404; line-height:1.6;">
+        <div style="font-weight:bold; color:#d9534f; margin-bottom:5px;">⚠️ 零概率陷阱：分类器失效！</div>
+        P(词 | 汽车) = 0 / ${totalWords} = <strong style="font-size:13px; color:#d9534f;">0.00</strong><br>
+        对数似然 log P = <strong style="font-size:13px; color:#d9534f;">-∞ (负无穷)</strong>
+        <p style="margin:5px 0 0 0; font-size:10px; color:#868e96; font-family:sans-serif;">公式中出现 0 概率，连乘积计算将直接报错或归零，分类器完全瘫痪！</p>
+      </div>
+    `;
+  } else {
+    const smoothedP = alpha / (totalWords + alpha * V);
+    const logP = Math.log(smoothedP);
+    resultHtml = `
+      <div style="font-family: monospace; font-size:11px; background:#eef9f0; padding:10px; border-radius:4px; border:1px solid #c3e6cb; color:#155724; line-height:1.6;">
+        <div style="font-weight:bold; color:#28a745; margin-bottom:5px;">✅ 平滑配置成功！</div>
+        P(词 | 汽车) = (0 + ${alpha.toFixed(1)}) / (${totalWords} + ${alpha.toFixed(1)} × ${V})<br>
+        条件概率 P = <strong style="font-size:12px; color:#28a745;">${smoothedP.toExponential(4)}</strong><br>
+        对数似然 log P = <strong style="font-size:12px; color:#28a745;">${logP.toFixed(2)}</strong>
+        <p style="margin:5px 0 0 0; font-size:10px; color:#6c757d; font-family:sans-serif;">引入极小正数，确保即使句子中有在汽车类中未见过的词，模型也不会瘫痪。</p>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = `
+    <div style="font-size:11px; line-height:1.4; margin-bottom:8px; color:#495057;">
+      假设有一个测试词在汽车类中未出现过（频数 = 0）：
+    </div>
+    ${resultHtml}
+  `;
+}
+
+function nbLoadMistake(index) {
+  activeNbTrainStep = "nb_predict";
+  renderNbTrainCurrentStep();
+  runNbPredict(index);
+}
+
+function nbHighlightText(text, topWords) {
+  if (!text || !nbTrainData) return "";
+  let html = escapeHtml(text);
+  const targetNames = nbTrainData.target_names;
+  
   topWords.forEach(item => {
     const word = item.word;
     const regex = new RegExp(`\\b(${word})\\b`, "gi");
-    html = html.replace(regex, `<mark style="background:#fff3cd; color:#856404; font-weight:bold; padding:0 2px; border-radius:2px;">$1</mark>`);
+    const c1 = item.contributions[targetNames[0]].toFixed(2);
+    const c2 = item.contributions[targetNames[1]].toFixed(2);
+    const diff = item.diff.toFixed(2);
+    const leanClass = item.diff >= 0 ? targetNames[0] : targetNames[1];
+    const leanIcon = item.diff >= 0 ? "🚀" : "🚗";
+    
+    const tooltipHtml = `
+      <mark style="background:#fff3cd; color:#856404; font-weight:bold; padding:0 2px; border-radius:2px;" title="特征词 '${word}' 似然对数贡献: ${targetNames[0]}: ${c1}, ${targetNames[1]}: ${c2} (决策倾向: ${leanClass})">$1</mark>
+    `;
+    html = html.replace(regex, tooltipHtml);
   });
   
   return html;
@@ -4159,15 +4811,13 @@ function nbGetFormulaHtml(data) {
     const like = data.likelihood_scores[name].toFixed(4);
     const total = data.raw_scores[name].toFixed(4);
     const boldStyle = name === data.predicted_label ? "font-weight:bold; color:#d9534f;" : "";
-    html += `<div style="margin-top: 4px; ${boldStyle}">log P(${escapeHtml(name)}|doc) = log P(prior) + log P(likelihood) = ${prior} + (${like}) = <strong>${total}</strong></div>`;
+    html += `<div style="margin-top: 4px; ${boldStyle}">log P(${escapeHtml(name)}|doc) = ${prior} + (${like}) = <strong>${total}</strong></div>`;
   });
   return html;
 }
 
 function nbGetContribTableRowsHtml(data) {
-  if (!data.top_words || !data.top_words.length) {
-    return `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">没有提取到特征贡献词。</td></tr>`;
-  }
+  if (!data.top_words || !data.top_words.length) return `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`;
   const keys = Object.keys(data.raw_scores);
   return data.top_words.map(item => {
     const c1 = item.contributions[keys[0]].toFixed(4);
@@ -4185,70 +4835,7 @@ function nbGetContribTableRowsHtml(data) {
   }).join("");
 }
 
-// --------------------------------------------------------------------------
-// ECharts 绘图核心渲染
-// --------------------------------------------------------------------------
 
-function renderNbTrainCharts() {
-  if (!nbTrainData) return;
-  clearNbCharts();
-
-  // 1. 绘制评估分类报告
-  const metricsDom = $("nbMetricsChart");
-  if (metricsDom) {
-    const ch = echarts.init(metricsDom);
-    const targetNames = nbTrainData.target_names;
-    
-    const precisions = targetNames.map(name => nbTrainData.class_report[name].precision);
-    const recalls = targetNames.map(name => nbTrainData.class_report[name].recall);
-    const f1s = targetNames.map(name => nbTrainData.class_report[name].f1);
-
-    const option = {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      legend: { data: ['精确率 (Precision)', '召回率 (Recall)', 'F1 值 (F1-score)'], bottom: 0 },
-      grid: { left: '3%', right: '4%', bottom: '10%', top: '8%', containLabel: true },
-      xAxis: { type: 'category', data: targetNames },
-      yAxis: { type: 'value', min: 0, max: 1.0, interval: 0.2 },
-      color: ['#4f86c6', '#1e824c', '#e67e22'],
-      series: [
-        { name: '精确率 (Precision)', type: 'bar', data: precisions },
-        { name: '召回率 (Recall)', type: 'bar', data: recalls },
-        { name: 'F1 值 (F1-score)', type: 'bar', data: f1s }
-      ]
-    };
-    ch.setOption(option);
-    nbCharts.push(ch);
-  }
-
-  // 2. 绘制先验分布
-  const priorsDom = $("nbPriorsChart");
-  if (priorsDom) {
-    const ch = echarts.init(priorsDom);
-    const targetNames = nbTrainData.target_names;
-    const values = targetNames.map(name => nbTrainData.prior_probs[name]);
-
-    const option = {
-      tooltip: { trigger: 'axis', formatter: '{b}: {c}' },
-      grid: { left: '3%', right: '8%', bottom: '5%', top: '5%', containLabel: true },
-      xAxis: { type: 'value', min: 0, max: 1.0 },
-      yAxis: { type: 'category', data: targetNames },
-      color: ['#2b5c8f'],
-      series: [
-        {
-          type: 'bar',
-          data: values,
-          label: {
-            show: true,
-            position: 'right',
-            formatter: (params) => params.value.toFixed(4)
-          }
-        }
-      ]
-    };
-    ch.setOption(option);
-    nbCharts.push(ch);
-  }
-}
 
 function renderNbProbeChart() {
   const probeDom = $("nbProbeChart");

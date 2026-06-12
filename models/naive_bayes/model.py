@@ -1066,6 +1066,39 @@ def prepare_train(payload: dict) -> dict:
                 "support": int(report[name]["support"])
             }
 
+    # 计算混淆矩阵与搜集错题样本
+    from sklearn.metrics import confusion_matrix
+    cm = confusion_matrix(y_test, y_pred_test)
+    confusion_matrix_list = cm.tolist()
+
+    misclassified_indices = np.where(y_pred_test != y_test)[0]
+    misclassified_samples = []
+    for idx in misclassified_indices[:5]:
+        raw_idx = ds["test_idx"][idx]
+        raw_text = ds["texts"][raw_idx]
+        # 大致清洗换行，保证前端预览美观
+        clean_text = raw_text.replace("\n", " ").strip()
+        text_preview = clean_text[:120] + "..." if len(clean_text) > 120 else clean_text
+        misclassified_samples.append({
+            "index": int(idx),
+            "true_label": target_names[y_test[idx]],
+            "predicted_label": target_names[y_pred_test[idx]],
+            "preview": text_preview
+        })
+
+    # 计算测试集概率，用于模型评估页面在前端调整阈值并绘制 ROC/PR 曲线
+    try:
+        y_prob_test = clf.predict_proba(X_test)[:, 1].tolist()
+    except Exception:
+        y_prob_test = [0.5] * len(y_test)
+        
+    eval_samples = []
+    for y_t, p_val in zip(y_test.tolist(), y_prob_test):
+        eval_samples.append({
+            "true_label": int(y_t),
+            "prob": float(p_val)
+        })
+
     response = {
         "dataset_id": dataset_id,
         "train_accuracy": train_accuracy,
@@ -1078,8 +1111,11 @@ def prepare_train(payload: dict) -> dict:
         "alpha": alpha,
         "prior_probs": prior_probs,
         "class_report": class_report_clean,
+        "confusion_matrix": confusion_matrix_list,
+        "misclassified_samples": misclassified_samples,
         "top_words_per_class": top_words_per_class,
-        "target_names": target_names
+        "target_names": target_names,
+        "eval_samples": eval_samples
     }
 
     # 创建会话上下文
@@ -1162,33 +1198,80 @@ def predict(payload: dict) -> dict:
         
     clf = ds["nb_model"]
     vectorizer = ds["vectorizer"]
-    X_test = ds["X_test"]
-    y_test = ds["y_test"]
+    X_test = ds.get("X_test")
+    y_test = ds.get("y_test")
     target_names = ds["target_names"]
     
     import random
     import numpy as np
 
-    test_count = len(y_test)
-    if test_count == 0:
-        raise ValueError("测试集为空，无法进行预测。")
+    test_count = len(y_test) if y_test is not None else 0
+    custom_text = payload.get("text")
+    is_custom = custom_text is not None
+
+    if is_custom:
+        import re
+        from sklearn.datasets._twenty_newsgroups import (
+            strip_newsgroup_header,
+            strip_newsgroup_footer,
+            strip_newsgroup_quoting
+        )
+        opts = ds.get("tokenization_options", {})
         
-    # 获取样本索引
-    sample_index = payload.get("sample_index")
-    if sample_index is None:
-        idx_in_test = random.randint(0, test_count - 1)
-    else:
-        try:
-            idx_in_test = int(sample_index) % test_count
-        except ValueError:
-            idx_in_test = random.randint(0, test_count - 1)
+        def _safe_strip_text(value, strip_func):
+            stripped = strip_func(value)
+            return stripped if stripped.strip() else value
+
+        text = custom_text
+        if opts.get("remove_headers", True):
+            text = _safe_strip_text(text, strip_newsgroup_header)
+        if opts.get("remove_quotes", True):
+            text = _safe_strip_text(text, strip_newsgroup_quoting)
+        if opts.get("remove_footers", True):
+            text = _safe_strip_text(text, strip_newsgroup_footer)
+
+        if opts.get("remove_numbers", True):
+            tokens = re.findall(r'\b[a-zA-Z]+\b', text)
+        else:
+            tokens = re.findall(r'\b[a-zA-Z0-9]+\b', text)
+
+        if opts.get("lowercase", True):
+            tokens = [t.lower() for t in tokens]
+
+        if opts.get("remove_stopwords", True):
+            tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
             
-    # 查找原始文本
-    raw_idx = ds["test_idx"][idx_in_test]
-    raw_text = ds["texts"][raw_idx]
-    true_class = y_test[idx_in_test]
-    
-    x_sample = X_test[idx_in_test]
+        clean_text_joined = " ".join(tokens)
+        x_sample = vectorizer.transform([clean_text_joined])[0]
+        raw_text = custom_text
+        true_class = None
+        idx_in_test = None
+        
+        # 计算 OOV 词汇
+        all_unique_tokens = list(set(tokens))
+        vocab = vectorizer.vocabulary_
+        oov_words = [t for t in all_unique_tokens if t not in vocab]
+    else:
+        if test_count == 0:
+            raise ValueError("测试集为空，无法进行预测。")
+            
+        # 获取样本索引
+        sample_index = payload.get("sample_index")
+        if sample_index is None:
+            idx_in_test = random.randint(0, test_count - 1)
+        else:
+            try:
+                idx_in_test = int(sample_index) % test_count
+            except ValueError:
+                idx_in_test = random.randint(0, test_count - 1)
+                
+        # 查找原始文本
+        raw_idx = ds["test_idx"][idx_in_test]
+        raw_text = ds["texts"][raw_idx]
+        true_class = y_test[idx_in_test]
+        
+        x_sample = X_test[idx_in_test]
+        oov_words = []
     
     # 算法预测
     pred_class = int(clf.predict(x_sample)[0])
@@ -1249,15 +1332,18 @@ def predict(payload: dict) -> dict:
     for col_idx, val in zip(x_coo.col, x_coo.data):
         word = feature_names[col_idx]
         contribs = {}
+        w_probs = {}
         for class_idx, name in enumerate(target_names):
             if ds["model_type"] == "MultinomialNB":
                 contribs[name] = float(val * clf.feature_log_prob_[class_idx, col_idx])
             else:
                 contribs[name] = float(-val * clf.feature_log_prob_[class_idx, col_idx])
+            w_probs[name] = float(np.exp(clf.feature_log_prob_[class_idx, col_idx]))
         word_contributions.append({
             "word": word,
             "val": float(val),
-            "contributions": contribs
+            "contributions": contribs,
+            "probs": w_probs
         })
         
     # 排序词汇贡献度：看在预测类和非预测类之间的得分差异
@@ -1269,7 +1355,7 @@ def predict(payload: dict) -> dict:
         item["diff"] = contribs[pred_name] - max_other
         
     word_contributions.sort(key=lambda x: x["diff"], reverse=True)
-    top_words = word_contributions[:5]
+    top_words = word_contributions
     
     # 清理非 JSON 序列化对象
     top_words_clean = []
@@ -1278,6 +1364,7 @@ def predict(payload: dict) -> dict:
             "word": w["word"],
             "val": float(w["val"]),
             "contributions": w["contributions"],
+            "probs": w["probs"],
             "diff": float(w["diff"])
         })
         
@@ -1289,14 +1376,16 @@ def predict(payload: dict) -> dict:
         "total_samples": test_count,
         "text_preview": text_preview,
         "full_text": raw_text,
-        "true_label": target_names[true_class],
+        "true_label": target_names[true_class] if true_class is not None else None,
         "predicted_label": target_names[pred_class],
-        "correct": bool(true_class == pred_class),
+        "correct": bool(true_class == pred_class) if true_class is not None else None,
         "raw_scores": raw_scores,
         "probs": probs,
         "prior_scores": prior_scores,
         "likelihood_scores": likelihood_scores,
-        "top_words": top_words_clean
+        "top_words": top_words_clean,
+        "is_custom": is_custom,
+        "oov_words": oov_words
     }
 
 
