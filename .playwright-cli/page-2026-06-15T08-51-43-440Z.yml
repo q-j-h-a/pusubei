@@ -1,0 +1,50 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: ML
+      - heading "朴素贝叶斯文本分类教学实验" [level=1] [ref=e7]
+  - generic [ref=e8]:
+    - complementary [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 理论部分
+        - generic [ref=e12]:
+          - button "实验基本信息" [ref=e13] [cursor=pointer]:
+            - strong [ref=e16]: 实验基本信息
+          - button "实验目的" [ref=e17] [cursor=pointer]:
+            - strong [ref=e20]: 实验目的
+          - button "前置知识" [ref=e21] [cursor=pointer]:
+            - strong [ref=e24]: 前置知识
+          - group [ref=e25]:
+            - generic "模型介绍 ›" [ref=e26] [cursor=pointer]:
+              - strong [ref=e29]: 模型介绍
+              - generic [ref=e30]: ›
+            - generic [ref=e31]:
+              - button "数据集" [ref=e32] [cursor=pointer]:
+                - strong [ref=e35]: 数据集
+              - button "训练模型" [ref=e36] [cursor=pointer]:
+                - strong [ref=e39]: 训练模型
+              - button "学习准则" [ref=e40] [cursor=pointer]:
+                - strong [ref=e43]: 学习准则
+              - button "参数优化" [ref=e44] [cursor=pointer]:
+                - strong [ref=e47]: 参数优化
+              - button "评价指标" [ref=e48] [cursor=pointer]:
+                - strong [ref=e51]: 评价指标
+          - button "预期成果" [ref=e52] [cursor=pointer]:
+            - strong [ref=e55]: 预期成果
+          - button "思考拓展" [ref=e56] [cursor=pointer]:
+            - strong [ref=e59]: 思考拓展
+      - generic [ref=e60]:
+        - generic [ref=e61]: 实验部分
+        - generic [ref=e62]:
+          - button "数据预处理" [ref=e63] [cursor=pointer]:
+            - strong [ref=e66]: 数据预处理
+          - button "模型训练" [ref=e67] [cursor=pointer]:
+            - strong [ref=e70]: 模型训练
+          - button "模型评估" [ref=e71] [cursor=pointer]:
+            - strong [ref=e74]: 模型评估
+          - button "模型预测" [ref=e75] [cursor=pointer]:
+            - strong [ref=e78]: 模型预测
+          - button "实验测试" [ref=e79] [cursor=pointer]:
+            - strong [ref=e82]: 实验测试
+    - separator "调整左侧导航宽度" [ref=e83]
+    - main [ref=e84]

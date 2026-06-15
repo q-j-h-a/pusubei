@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>简单线性回归教学实验</title>
+  <title>朴素贝叶斯文本分类教学实验</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
@@ -4751,12 +4751,12 @@
     <div class="brand">
       <div class="logo">ML</div>
       <div>
-        <h1>简单线性回归教学实验</h1>
+        <h1>朴素贝叶斯文本分类教学实验</h1>
       </div>
     </div>
     <div class="page-top-slot" id="pageTopSlot"></div>
     <div class="top-actions hidden-top">
-      <span class="pill" id="topFeature">当前特征 RM</span>
+      <span class="pill" id="topFeature">当前任务 文本分类</span>
       <button class="primary-btn" type="button" id="jumpExperiment">开始实验</button>
     </div>
   </header>
@@ -4772,11 +4772,11 @@
           <details class="nested-section" open>
             <summary><span class="dot"></span><span><strong>模型介绍</strong><span class="sub">数据、模型和指标</span></span><span class="chev">&rsaquo;</span></summary>
             <div class="step-list">
-              <button class="nav-btn" data-page="dataset" type="button"><span class="dot"></span><span><strong>数据集</strong><span>特征、标签和标准化</span></span></button>
-              <button class="nav-btn" data-page="model" type="button"><span class="dot"></span><span><strong>训练模型</strong><span>y = wx + b</span></span></button>
-              <button class="nav-btn" data-page="criterion" type="button"><span class="dot"></span><span><strong>学习准则</strong><span>MSE 损失函数</span></span></button>
-              <button class="nav-btn" data-page="optimization" type="button"><span class="dot"></span><span><strong>参数优化</strong><span>梯度下降更新</span></span></button>
-              <button class="nav-btn" data-page="evaluation" type="button"><span class="dot"></span><span><strong>评价指标</strong><span>RMSE、MAE、R²</span></span></button>
+              <button class="nav-btn" data-page="dataset" type="button"><span class="dot"></span><span><strong>数据集</strong><span>文本、标签和词袋特征</span></span></button>
+              <button class="nav-btn" data-page="model" type="button"><span class="dot"></span><span><strong>训练模型</strong><span>先验、似然和后验</span></span></button>
+              <button class="nav-btn" data-page="criterion" type="button"><span class="dot"></span><span><strong>学习准则</strong><span>条件概率与平滑</span></span></button>
+              <button class="nav-btn" data-page="optimization" type="button"><span class="dot"></span><span><strong>参数优化</strong><span>拉普拉斯平滑</span></span></button>
+              <button class="nav-btn" data-page="evaluation" type="button"><span class="dot"></span><span><strong>评价指标</strong><span>Accuracy、Precision、Recall、F1</span></span></button>
             </div>
           </details>
           <button class="nav-btn" data-page="result" type="button"><span class="dot"></span><span><strong>预期成果</strong><span>实验完成标准</span></span></button>

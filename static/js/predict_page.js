@@ -929,38 +929,52 @@ async function renderNbPredictShell() {
       .nb-predict-container {
         display: flex;
         flex-direction: column;
-        gap: 20px;
-        padding: 24px;
+        gap: 16px;
+        padding: 0;
         box-sizing: border-box;
-        background: radial-gradient(circle at 10% 10%, #f1f5f9 0%, #e2e8f0 100%);
+        background: transparent;
         min-height: 100%;
         overflow-y: auto;
-        font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-family: inherit;
       }
       .nb-predict-row {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-        gap: 20px;
+        gap: 16px;
       }
       .nb-predict-card {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        border-radius: 16px;
-        box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
-        padding: 24px;
+        position: relative;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 18px;
         display: flex;
         flex-direction: column;
         height: 100%;
         min-height: 0;
-        overflow: auto;
+        overflow: hidden;
         box-sizing: border-box;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: border-color .16s ease, box-shadow .16s ease;
       }
       .nb-predict-card:hover {
-        box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
-        border-color: rgba(255, 255, 255, 0.8);
+        box-shadow: var(--shadow);
+        border-color: var(--line);
+      }
+      .nb-predict-card::after {
+        content: "";
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        width: 18px;
+        height: 18px;
+        opacity: .28;
+        pointer-events: none;
+        background:
+          linear-gradient(135deg, transparent 68%, #9aa3b2 70%, #9aa3b2 76%, transparent 78%);
+      }
+      .nb-predict-grid .grid-stack-item-content {
+        overflow: hidden;
       }
       .nb-predict-card.wide {
         grid-column: 1 / -1;
@@ -974,7 +988,10 @@ async function renderNbPredictShell() {
         display: flex;
         align-items: center;
         gap: 8px;
-        cursor: move;
+        cursor: grab;
+      }
+      .nb-predict-card h3:active {
+        cursor: grabbing;
       }
       .nb-predict-card h4 {
         margin: 0 0 20px 0;
@@ -987,8 +1004,8 @@ async function renderNbPredictShell() {
       /* 拔河决策天平样式 */
       .nb-balance-wrapper {
         position: relative;
-        height: clamp(340px, calc(100% - 58px), 460px);
-        min-height: 340px;
+        height: clamp(400px, calc(100% - 58px), 460px);
+        min-height: 400px;
         width: 100%;
         display: flex;
         flex-direction: column;
@@ -997,8 +1014,8 @@ async function renderNbPredictShell() {
         background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
         border: 1px solid rgba(226, 232, 240, 0.8);
         border-radius: 12px;
-        overflow: visible;
-        padding-top: 15px;
+        overflow: hidden;
+        padding: 48px 16px 18px;
         box-sizing: border-box;
         box-shadow: inset 0 2px 8px rgba(0,0,0,0.02);
       }
@@ -1006,7 +1023,7 @@ async function renderNbPredictShell() {
       /* 刻度盘 & 仪表弧 */
       .nb-balance-dial {
         position: absolute;
-        top: 35px;
+        top: 54px;
         width: 160px;
         height: 80px;
         border: 2px dashed #cbd5e1;
@@ -1030,7 +1047,7 @@ async function renderNbPredictShell() {
       /* 指针 */
       .nb-balance-needle {
         position: absolute;
-        top: 45px;
+        top: 64px;
         width: 3px;
         height: 55px;
         background: linear-gradient(to top, #ef4444 70%, transparent 100%);
@@ -1043,31 +1060,16 @@ async function renderNbPredictShell() {
 
       /* 立柱支架 */
       .nb-balance-stand {
-        position: absolute;
-        bottom: 40px;
-        width: 16px;
-        height: 140px;
-        background: linear-gradient(to right, #475569 0%, #334155 50%, #1e293b 100%);
-        border-radius: 8px 8px 0 0;
-        box-shadow: 0 10px 20px -5px rgba(0,0,0,0.15);
-        border-top: 1px solid rgba(255,255,255,0.15);
+        display: none;
       }
       .nb-balance-stand::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 100px;
-        height: 12px;
-        background: linear-gradient(to bottom, #334155, #0f172a);
-        border-radius: 4px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-        border: 1px solid rgba(255,255,255,0.05);
+        content: none;
       }
       .nb-balance-stand-pivot {
         position: absolute;
-        top: 98px; /* 对应立柱顶部 pivot */
+        left: 50%;
+        transform: translateX(-50%);
+        top: 117px; /* 对应立柱顶部 pivot */
         width: 24px;
         height: 24px;
         border-radius: 50%;
@@ -1080,7 +1082,7 @@ async function renderNbPredictShell() {
       /* 横梁悬挂组件 */
       .nb-balance-beam-assembly {
         position: absolute;
-        top: 100px;
+        top: 119px;
         width: min(78%, 520px);
         min-width: 340px;
         height: 20px;
@@ -1109,7 +1111,7 @@ async function renderNbPredictShell() {
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: 140px;
+        width: 152px;
         transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
         transform-origin: top center;
       }
@@ -1142,9 +1144,9 @@ async function renderNbPredictShell() {
         border: 1px solid #cbd5e1;
       }
       .nb-balance-pan-plate {
-        width: 138px;
+        width: 150px;
         min-height: 100px;
-        max-height: 178px;
+        max-height: none;
         background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.95) 100%);
         border: 1px solid rgba(148, 163, 184, 0.35);
         border-radius: 10px;
@@ -1170,9 +1172,8 @@ async function renderNbPredictShell() {
         font-weight: 800;
         color: #1e293b;
         margin-bottom: 8px;
-        text-overflow: ellipsis;
-        overflow: hidden;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        white-space: normal;
         width: 100%;
         text-align: center;
         text-transform: uppercase;
@@ -1198,28 +1199,31 @@ async function renderNbPredictShell() {
       .nb-pan-weights {
         display: flex;
         flex-direction: column-reverse;
-        gap: 4px;
+        gap: 3px;
         width: 100%;
         align-items: center;
         min-height: 40px;
-        max-height: 114px;
-        overflow-y: auto;
-        padding: 2px 3px;
+        max-height: none;
+        overflow: hidden;
+        padding: 1px 2px;
         box-sizing: border-box;
       }
       
       /* 拟真胶囊重物块样式与动画 */
       .nb-weight-block {
-        font-size: 10px;
+        font-size: 9.5px;
         font-weight: 600;
-        padding: 4px 7px;
+        padding: 3px 6px;
         border-radius: 20px;
         color: #ffffff;
         text-align: center;
         box-shadow: 0 2px 4px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,0.25);
-        text-overflow: ellipsis;
+        min-width: 86px;
+        max-width: 100%;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+        white-space: normal;
         overflow: hidden;
-        white-space: nowrap;
         font-family: 'Outfit', monospace;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         border: 1px solid rgba(0,0,0,0.05);
@@ -1263,15 +1267,21 @@ async function renderNbPredictShell() {
 
       .nb-balance-readout {
         position: absolute;
-        bottom: 12px;
+        left: 50%;
+        top: 12px;
+        transform: translateX(-50%);
         font-size: 12px;
         color: #475569;
-        background: rgba(241, 245, 249, 0.8);
+        background: rgba(255, 255, 255, 0.96);
         padding: 4px 12px;
         border-radius: 20px;
         border: 1px solid rgba(226, 232, 240, 0.8);
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         text-align: center;
+        z-index: 8;
+        max-width: calc(100% - 32px);
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
       .nb-log-odds-value {
         font-family: monospace;
@@ -1486,10 +1496,9 @@ async function renderNbPredictShell() {
         <h3>拔河决策天平 (Tug-of-War Decision Scale)</h3>
         <h4 id="nbTugOfWarSubtitle">展示先验对数胜率与特征词对数似然对决策天平的拉力偏转</h4>
         <div id="nbTugOfWar">
-          <div class="nb-balance-wrapper">
+            <div class="nb-balance-wrapper">
             <div class="nb-balance-dial"></div>
             <div class="nb-balance-needle" id="nbBalanceNeedle"></div>
-            <div class="nb-balance-stand"></div>
             <div class="nb-balance-stand-pivot"></div>
             <div class="nb-balance-beam-assembly" id="nbBeamAssembly">
               <div class="nb-balance-beam-bar"></div>
@@ -1561,6 +1570,9 @@ function normalizeNbPredictGridLayout(view, layout = {}) {
   };
   clean.w = Math.max(1, Math.min(4, clean.w));
   clean.h = Math.max(1, clean.h);
+  if (view === "nb_predict_scale") {
+    clean.h = 2;
+  }
   clean.x = Math.max(0, Math.min(4 - clean.w, clean.x));
   clean.y = Math.max(0, clean.y);
   return clean;
@@ -1600,7 +1612,7 @@ function applyNbPredictCardGrid() {
     item.setAttribute("gs-w", layout.w);
     item.setAttribute("gs-h", layout.h);
     item.setAttribute("gs-min-w", "1");
-    item.setAttribute("gs-min-h", "1");
+    item.setAttribute("gs-min-h", view === "nb_predict_scale" ? "2" : "1");
 
     const inner = document.createElement("div");
     inner.className = "grid-stack-item-content";
@@ -1891,19 +1903,23 @@ function renderWeightsList(pullers, priorVal, isRight, maxVal) {
   return html || `<div style="font-size:10px; color:#94a3b8; font-style:italic; padding: 10px 0;">(无拉力)</div>`;
 }
 
+function getNbPredictionPair(data) {
+  const targetNames = nbTrainData.target_names || Object.keys(data.probs || {});
+  const sorted = Object.entries(data.probs || {})
+    .filter(([name]) => targetNames.includes(name))
+    .sort((a, b) => b[1] - a[1]);
+  const predicted = data.predicted_label || sorted[0]?.[0] || targetNames[0];
+  const opponent = sorted.find(([name]) => name !== predicted)?.[0] || targetNames.find(name => name !== predicted);
+
+  return {
+    c1_name: predicted,
+    c2_name: opponent || predicted
+  };
+}
+
 function renderNbTugOfWar(data) {
-  const target_names = nbTrainData.target_names;
   const probs = data.probs;
-  
-  let c1_name = target_names[0];
-  let c2_name = target_names[1];
-  let isMultiClass = target_names.length > 2;
-  
-  if (isMultiClass) {
-    const sortedProbs = Object.entries(probs).sort((a,b) => b[1] - a[1]);
-    c1_name = sortedProbs[0][0];
-    c2_name = sortedProbs[1][0];
-  }
+  const { c1_name, c2_name } = getNbPredictionPair(data);
   
   const logOdds = data.raw_scores[c1_name] - data.raw_scores[c2_name];
   const priorPull = data.prior_scores[c1_name] - data.prior_scores[c2_name];
@@ -2002,16 +2018,7 @@ function renderNbWordBreakdown(data) {
   const slot = $("nbWordBreakdown");
   if (!slot) return;
   
-  const target_names = nbTrainData.target_names;
-  let c1_name = target_names[0];
-  let c2_name = target_names[1];
-  let isMultiClass = target_names.length > 2;
-  
-  if (isMultiClass) {
-    const sortedProbs = Object.entries(data.probs).sort((a,b) => b[1] - a[1]);
-    c1_name = sortedProbs[0][0];
-    c2_name = sortedProbs[1][0];
-  }
+  const { c1_name, c2_name } = getNbPredictionPair(data);
   
   let rowsHtml = "";
   
@@ -2101,17 +2108,8 @@ function renderNbMathDerivation(data) {
   const slot = $("nbMathDerivation");
   if (!slot) return;
   
-  const target_names = nbTrainData.target_names;
   const probs = data.probs;
-  let c1_name = target_names[0];
-  let c2_name = target_names[1];
-  let isMultiClass = target_names.length > 2;
-  
-  if (isMultiClass) {
-    const sortedProbs = Object.entries(data.probs).sort((a,b) => b[1] - a[1]);
-    c1_name = sortedProbs[0][0];
-    c2_name = sortedProbs[1][0];
-  }
+  const { c1_name, c2_name } = getNbPredictionPair(data);
   
   const s1 = data.raw_scores[c1_name];
   const s2 = data.raw_scores[c2_name];

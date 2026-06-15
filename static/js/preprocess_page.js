@@ -825,7 +825,7 @@ function persistDataFormState() {
   if ($("dataFeature")) {
     viewStateStore[preprocessFormStateKey()] = {
       feature: $("dataFeature").value,
-      dataset_id: currentDatasetMeta?.dataset_id || "boston_housing",
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
     };
   }
 }
@@ -1242,7 +1242,7 @@ function preprocessDetailGuideSpec() {
     step: "detail_scale",
     target: ".preprocess-detail-scale-guide-target",
     title: "了解数据规模",
-    body: "先观察这份数据集的基本结构：样本数量、特征数量和目标列。再查看字段表，认识各字段名称及中文含义，明确哪些列是输入特征，哪一列是目标变量。本实验就是用 13 个特征预测房价指标 MEDV。",
+    body: "先观察这份文本数据集的基本结构：样本数量、类别数量、类别分布和文本预览。重点确认当前任务是根据新闻组文本内容预测类别标签。",
     action: "下一步",
   };
 }
@@ -1353,7 +1353,7 @@ function preprocessRawVizGuideSpec() {
       step,
       target: '[data-chart-card="raw"]',
       title: "观察原始散点图",
-      body: "散点图中每个点代表一条房屋样本。横轴是当前选择的特征，纵轴是目标值 MEDV。请观察点云的大致方向和线性趋势线，判断该特征与房价之间是正相关、负相关，还是关系较弱。",
+      body: "这里应关注文本样本被清洗、分词和向量化后的特征形态。重点观察哪些词在某个类别中更集中出现，而不是观察数值散点趋势。",
       action: "下一步",
     };
   }
@@ -1362,7 +1362,7 @@ function preprocessRawVizGuideSpec() {
       step,
       target: '[data-chart-card="all_corr"]',
       title: "比较全特征相关性",
-      body: "这里展示所有输入特征与 MEDV 的线性相关系数。条形越长，说明线性关系越明显；方向表示正相关或负相关。请比较当前特征和其他特征，找出哪些特征更适合用于后续建模观察。",
+      body: "这里应比较不同词项对类别区分的贡献。某个词在一个类别中越集中、在另一个类别中越少见，通常越适合解释分类结果。",
       action: "完成本步引导",
     };
   }
@@ -1370,7 +1370,7 @@ function preprocessRawVizGuideSpec() {
     step: "raw_feature",
     target: "#dataFeature",
     title: "选择观察特征",
-    body: "右侧下拉框决定当前要观察的输入特征。切换特征后，原始散点图会展示该特征与目标列 MEDV 的关系，全特征相关系数图也会对应突出当前特征。",
+    body: "右侧控件决定当前要观察的文本处理阶段或词项特征。切换后请关注 token、词频、向量维度和类别分布的变化。",
     action: "下一步",
   };
 }
@@ -1599,7 +1599,7 @@ function preprocessStandardVizGuideSpec() {
       step,
       target: ".guide-combo-target",
       title: "对比原始图和标准图",
-      body: "请同时观察上方两个散点图。左侧是原始特征与原始 MEDV，右侧是标准化特征与标准化 MEDV。重点比较点云形状和趋势方向：标准化改变坐标尺度，但不改变样本之间的相对关系。",
+      body: "请对比清洗前文本、分词结果和向量化结果。重点理解文本如何从原始字符串变成可供朴素贝叶斯训练的词袋矩阵。",
       action: "下一步",
     };
   }
@@ -1608,7 +1608,7 @@ function preprocessStandardVizGuideSpec() {
       step,
       target: '[data-chart-card="all_corr"]',
       title: "观察相关系数是否变化",
-      body: "下方展示所有特征与 MEDV 的线性相关系数。标准化只做平移和缩放，通常不会改变 Pearson 相关系数，因此特征相关性的方向和强弱应保持一致。",
+      body: "下方展示的重点应是词项区分类别的能力。请比较高频词、差异词和类别标签之间的关系，判断哪些词更像有效分类线索。",
       action: "完成本步引导",
     };
   }
@@ -2382,37 +2382,37 @@ function preprocessLoadHintCardHtml() {
 
 function preprocessFormatCardHtml() {
   const rawRows = [
-    { area: 80, rooms: 2, price: 120 },
-    { area: 100, rooms: 3, price: 160 },
-    { area: 120, rooms: 3, price: 180 },
+    { text: "The shuttle mission will launch next week", label: "sci.space" },
+    { text: "The engine needs new tires and oil", label: "rec.autos" },
+    { text: "NASA released new satellite data", label: "sci.space" },
   ];
-  const bostonRows = [
-    { CRIM: 0.00632, RM: 6.575, LSTAT: 4.98, MEDV: 24.0 },
-    { CRIM: 0.02731, RM: 6.421, LSTAT: 9.14, MEDV: 21.6 },
-    { CRIM: 0.02729, RM: 7.185, LSTAT: 4.03, MEDV: 34.7 },
+  const vectorRows = [
+    { token: "space", "sci.space": 0.034, "rec.autos": 0.002 },
+    { token: "engine", "sci.space": 0.001, "rec.autos": 0.028 },
+    { token: "orbit", "sci.space": 0.019, "rec.autos": 0.001 },
   ];
   return `<section class="preprocess-dashboard-card">
     <div class="chart-head">
       <div>
         <div class="chart-title">数据格式</div>
-        <div class="chart-sub">请先在右侧加载数据集，加载成功后再选择特征并执行预处理查看。</div>
+        <div class="chart-sub">请先在右侧加载 20 Newsgroups 数据集，再依次执行清洗分词、向量化、词频分析和数据集划分。</div>
       </div>
     </div>
     <div class="info-card-body" style="padding:18px">
       <div class="format-intro">
-        <p><strong>规则：</strong>系统把最后一列作为目标列 y，其余数值列作为候选特征 x。预处理阶段会按所选特征生成标准化视图，并用于后续训练。</p>
-        <p>内置 Boston 会作为原始数据集加载；上传 CSV 需要第一行是列名，至少包含 1 个数值特征列和 1 个数值目标列。</p>
+        <p><strong>规则：</strong>系统把每篇新闻组文本作为输入，把新闻组名称作为类别标签。预处理阶段会把原始文本清洗、分词，并转换成词袋或 TF-IDF 特征矩阵。</p>
+        <p>内置数据集为 20 Newsgroups；当前实验默认比较 <code>sci.space</code> 与 <code>rec.autos</code> 两类文本。</p>
       </div>
       <div class="format-grid">
         <div class="format-column">
-          <div class="format-point"><strong>通用 CSV 示例</strong>目标列放在最后，例如 <code>area</code>、<code>rooms</code>、<code>price</code>。</div>
-          <p class="sample-caption">原始 CSV 示例</p>
+          <div class="format-point"><strong>原始文本样例</strong>每一行包含文本内容和真实类别标签。</div>
+          <p class="sample-caption">20 Newsgroups 文本示例</p>
           ${previewTableHtml(rawRows)}
         </div>
         <div class="format-column">
-          <div class="format-point"><strong>Boston 原始数据集</strong>目标列为 <code>MEDV</code>，其余数值列可作为特征。</div>
-          <p class="sample-caption">Boston 示例</p>
-          ${previewTableHtml(bostonRows)}
+          <div class="format-point"><strong>向量化后特征</strong>词项会变成模型可计算的条件概率或权重。</div>
+          <p class="sample-caption">词项条件概率示例</p>
+          ${previewTableHtml(vectorRows)}
         </div>
       </div>
       <div class="format-upload-hint">请先在右侧 01 数据集 中加载数据集。</div>

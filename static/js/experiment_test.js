@@ -9,336 +9,230 @@ const EXPERIMENT_TEST_FLOW = [
   {
     id: "preprocess_load_leak",
     module: "数据预处理",
-    title: "加载原始数据",
+    title: "加载 20 Newsgroups 数据",
     page: "preprocess",
     step: "load",
-    operation: "请在右侧选择类别（推荐 sci.space 和 rec.autos），限制最大样本为 500，点击【加载数据集】。完成后观察上方类别分布与下方邮件文本预览。",
-    hint: "关注邮件中的信头信息（如 nasa.gov）是否被剥离，思考其对分类的影响。",
-    question: "在 20 Newsgroups 文本分类中，如果不移除邮件信头（Headers，如 From: xxx@nasa.gov），贝叶斯分类器最可能发生什么？",
+    operation: "在右侧选择 sci.space 与 rec.autos 两个类别，设置最大样本数，点击【加载数据集】，观察类别分布和文本预览。",
+    hint: "重点看原始文本中是否包含邮件头、签名、引用行等容易泄露类别的信息。",
+    question: "如果文本分类实验没有移除 Headers、Footers 或 Quotes，朴素贝叶斯模型最可能学到什么？",
     type: "single",
     options: [
-      "分类器分类性能大幅下降",
-      "模型可能通过直接识别特征域名（如 nasa.gov）来作弊分类，导致泛化性能极差（过拟合）",
-      "模型无法正常收敛"
+      "只学习主题词本身，泛化能力一定更强",
+      "可能记住发件域名、签名和引用格式等泄露信息，导致评估虚高",
+      "无法计算先验概率",
+      "词袋特征会自动消除所有泄露信息"
     ],
-    answer: "模型可能通过直接识别特征域名（如 nasa.gov）来作弊分类，导致泛化性能极差（过拟合）",
-    explanation: "信头、签名等包含直接的标签特征泄漏。如果不进行过滤，贝叶斯模型将简单地通过记住发件域名来做分类，导致在未见过的真实邮件上表现极差（严重过拟合）。"
+    answer: "可能记住发件域名、签名和引用格式等泄露信息，导致评估虚高",
+    explanation: "邮件头和签名可能直接暴露来源或主题。模型记住这些线索会得到漂亮的测试分数，但真实泛化能力会变差。"
   },
   {
-    id: "preprocess_load_stopwords",
+    id: "preprocess_tokenize_clean",
     module: "数据预处理",
-    title: "加载原始数据",
+    title: "清洗与分词",
     page: "preprocess",
-    step: "load",
-    operation: "请观察加载后的数据预览文本，找出那些在各类邮件中均高频出现但无实际分类意义的词（如 the、is、and 等）。",
-    hint: "这些无具体物理含义的常见高频词通常被称为停用词。",
-    question: "观察加载后的文本，像 'the'、'is'、'and' 这样随处可见的常用词。关于它们在文本分类中的作用，以下说法正确的是？",
+    step: "tokenize",
+    operation: "执行清洗与分词，观察大小写归一、符号清理、停用词过滤后的 token 列表。",
+    hint: "比较清洗前后的文本，关注 the、and、is 等高频但弱区分词是否被处理。",
+    question: "在文本分类中，停用词过滤的主要作用是什么？",
     type: "single",
     options: [
-      "它们是高频核心特征，应该保留来帮助模型判断类别",
-      "它们对区分太空和汽车等类别没有任何帮助（称为“停用词”），后续应当进行过滤",
-      "它们能极大地提升朴素贝叶斯的联合概率估计精度"
+      "删除所有和类别强相关的词",
+      "减少高频弱区分词的干扰，让主题词贡献更清晰",
+      "把文本直接转换成预测结果",
+      "替代模型训练过程"
     ],
-    answer: "它们对区分太空和汽车等类别没有任何帮助（称为“停用词”），后续应当进行过滤",
-    explanation: "这类常见虚词不含特定主题的信息，对于各个类别的先验或后验概率计算只有干扰作用，在文本挖掘中通常归为停用词（Stop Words），需要在分词后进行剔除。"
+    answer: "减少高频弱区分词的干扰，让主题词贡献更清晰",
+    explanation: "停用词通常在多个类别中都频繁出现，区分类别的能力弱。过滤它们可以降低噪声。"
   },
   {
-    id: "preprocess_detail_stats",
+    id: "preprocess_vectorize_bow",
     module: "数据预处理",
-    title: "数据详情",
+    title: "词袋向量化",
     page: "preprocess",
-    step: "detail",
-    operation: "请查看数据详情页面，先确认字段名称、字段角色和中文含义，再观察统计详情中的缺失值数量、重复样本数量、数值型列数量，以及各字段的最小值、最大值、平均值和标准差。重点思考这些统计信息如何帮助判断数据质量、字段取值范围和后续是否需要标准化处理。",
-    hint: "标准差可以帮助判断字段取值在样本之间的波动程度。",
-    question: "在数据详情页中，如果发现某个字段的“标准差”明显较大，通常说明什么？",
+    step: "vectorize",
+    operation: "执行特征向量化，查看词表大小、稀疏矩阵形状和样本文档的词频特征。",
+    hint: "朴素贝叶斯接收的是数值矩阵，不是原始字符串。",
+    question: "词袋向量化把一篇文本转换成了什么？",
     type: "single",
     options: [
-      "该字段已经完成标准化，均值一定为0",
-      "该字段一定是目标列，不能作为输入特征",
-      "该字段存在缺失值，必须删除整列",
-      "该字段的取值波动较大，样本之间差异更明显"
+      "每个词在词表中的出现次数或权重组成的向量",
+      "一张图片",
+      "一条线性回归直线",
+      "固定长度的人工标签"
     ],
-    answer: "该字段的取值波动较大，样本之间差异更明显",
-    explanation: "标准差反映数据围绕平均值的离散程度。标准差越大，说明该字段的取值波动越大，样本之间差异越明显。它不代表该字段一定无效，也不等于存在缺失值。"
+    answer: "每个词在词表中的出现次数或权重组成的向量",
+    explanation: "词袋模型忽略词序，保留词项出现信息。MultinomialNB 正是基于这些计数或权重估计条件概率。"
   },
   {
-    id: "preprocess_detail_quality",
+    id: "preprocess_word_freq",
     module: "数据预处理",
-    title: "数据详情",
+    title: "词频特征分析",
     page: "preprocess",
-    step: "detail",
-    operation: "请查看数据详情页面，先确认字段名称、字段角色和中文含义，再观察统计详情中的缺失值数量、重复样本数量、数值型列数量，以及各字段的最小值、最大值、平均值和标准差。重点思考这些统计信息如何帮助判断数据质量、字段取值范围和后续是否需要标准化处理。",
-    hint: "这些信息用于判断数据是否适合进入后续标准化和模型训练。",
-    question: "在数据详情页中，为什么要同时查看缺失值数量、重复样本数量和各字段的统计值？",
+    step: "word_freq",
+    operation: "查看两类文本的高频词和差异词，判断哪些词更能区分 sci.space 与 rec.autos。",
+    hint: "主题词在某一类中明显更常见时，通常会成为强分类线索。",
+    question: "如果 engine、ford、tires 在 rec.autos 中明显更高频，它们在分类时通常会产生什么影响？",
     type: "single",
     options: [
-      "为了直接得到最终预测结果",
-      "为了判断数据质量，并了解各字段的取值范围和分布情况",
-      "为了跳过模型训练过程",
-      "为了把所有字段都转换成目标列"
+      "提高文档被判为 rec.autos 的后验得分",
+      "一定导致模型训练失败",
+      "让所有类别先验概率相等",
+      "直接删除 sci.space 类别"
     ],
-    answer: "为了判断数据质量，并了解各字段的取值范围和分布情况",
-    explanation: "缺失值和重复样本用于检查数据质量，字段统计值用于了解各特征的取值范围、均值和波动情况。这样可以在训练前发现数据问题，并为后续标准化和模型训练提供依据。"
+    answer: "提高文档被判为 rec.autos 的后验得分",
+    explanation: "这些词对汽车主题有更强指示性，会提高对应类别的似然贡献。"
   },
   {
-    id: "preprocess_raw_relation",
+    id: "preprocess_split_stratify",
     module: "数据预处理",
-    title: "原始数据可视化",
+    title: "划分训练集与测试集",
     page: "preprocess",
-    step: "raw_viz",
-    operation: "请选择一个特征，观察左侧“原始散点图”中特征值与目标值 MEDV 之间的分布关系，并查看右侧“全特征线性相关系数”排序图。重点判断：当前特征与 MEDV 是正相关还是负相关，相关程度强还是弱，以及哪些特征与房价目标值关系更明显。",
-    hint: "相关系数可以帮助判断不同特征与目标值 MEDV 的线性关系强弱。",
-    question: "在线性相关系数图中，相关系数的绝对值越大，通常说明什么？",
+    step: "split",
+    operation: "执行训练/测试集划分，观察训练集、测试集的类别比例是否接近原始数据。",
+    hint: "分类任务中，分层抽样可以降低某一类在测试集中比例异常的风险。",
+    question: "为什么二分类数据划分时通常要保持类别比例接近？",
     type: "single",
     options: [
-      "该特征一定没有异常值",
-      "该特征的样本数量越多",
-      "该特征与目标值 MEDV 的线性关系越强",
-      "该特征一定不能用于模型训练"
+      "为了让评估集更能代表原始分类任务",
+      "为了让模型只学习一个类别",
+      "为了跳过向量化",
+      "为了让词表大小变成 0"
     ],
-    answer: "该特征与目标值 MEDV 的线性关系越强",
-    explanation: "相关系数用于衡量两个变量之间线性关系的方向和强弱。数值接近 1 表示较强的正相关，接近 -1 表示较强的负相关，接近 0 表示线性关系较弱。通常看相关性强弱时，会关注相关系数的绝对值，绝对值越大，说明该特征与目标值 MEDV 的线性关系越明显。"
+    answer: "为了让评估集更能代表原始分类任务",
+    explanation: "如果测试集类别比例严重偏移，准确率、召回率等指标会失真。"
   },
   {
-    id: "preprocess_raw_rm_relation",
-    module: "数据预处理",
-    title: "原始数据可视化",
-    page: "preprocess",
-    step: "raw_viz",
-    operation: "请选择一个特征，观察左侧“原始散点图”中特征值与目标值 MEDV 之间的分布关系，并查看右侧“全特征线性相关系数”排序图。重点判断：当前特征与 MEDV 是正相关还是负相关，相关程度强还是弱，以及哪些特征与房价目标值关系更明显。",
-    hint: "RM 表示住宅平均房间数，通常与 MEDV 呈正相关。",
-    question: "请在右侧“特征选择”中选择 RM，观察左侧原始散点图和线性趋势线，判断 RM 与目标值 MEDV 之间的关系。",
-    type: "single",
-    options: [
-      "RM 越大，MEDV 整体越高，二者呈正相关关系",
-      "RM 越大，MEDV 整体越低，二者呈负相关关系",
-      "RM 与 MEDV 完全没有关系",
-      "RM 是目标列，不是输入特征"
-    ],
-    answer: "RM 越大，MEDV 整体越高，二者呈正相关关系",
-    explanation: "RM 表示住宅平均房间数。从散点和趋势线可以看到，RM 较大时 MEDV 通常也更高，二者整体呈正相关关系。"
-  },
-  {
-    id: "preprocess_standardize_formula",
-    module: "数据预处理",
-    title: "数据标准化",
-    page: "preprocess",
-    step: "standardize",
-    operation: "请在右侧选择一个特征，观察该特征的均值 μ、标准差 σ 和 z-score 标准化公式。对比标准化前后前 5 行数据以及范围对比表，理解标准化如何把不同量纲的特征转换到更容易比较和训练的尺度上。重点观察：标准化后数据是否围绕 0 分布，标准差是否接近 1，原始最小值和最大值被转换到了什么范围。",
-    hint: "z-score 标准化会使用均值和标准差把原始数值转换到更统一的尺度。",
-    question: "z-score 标准化后的特征值通常具有什么特点？",
-    type: "single",
-    options: [
-      "目标列 MEDV 会被删除",
-      "所有数据都会被压缩到 0 到 1 之间",
-      "样本数量会减少",
-      "数据会围绕 0 分布，标准差通常接近 1"
-    ],
-    answer: "数据会围绕 0 分布，标准差通常接近 1",
-    explanation: "z-score 标准化使用公式 z = (x - mean) / std，将原始数据减去均值后再除以标准差。这样处理后，特征值通常会围绕 0 分布，标准差接近 1，从而让不同量纲的特征处在更容易比较和训练的尺度上。"
-  },
-  {
-    id: "preprocess_standardized_distribution",
-    module: "数据预处理",
-    title: "标准数据可视化",
-    page: "preprocess",
-    step: "standard_viz",
-    operation: "请先选择特征，分别观察标准化前后的散点图和趋势线，再结合下方“全特征线性相关系数”图，判断哪些特征与 MEDV 的线性关系更明显。",
-    hint: "标准化会改变数值尺度，但不会改变变量之间的基本线性关系方向。",
-    question: "与原始数据可视化相比，标准数据可视化主要发生了什么变化？",
-    type: "single",
-    options: [
-      "横轴和纵轴变成标准化后的数值尺度，但特征与目标值的相关方向基本不变",
-      "样本数量减少，所以散点图中的点变少了",
-      "MEDV 被删除，所以无法再观察目标值",
-      "所有特征和目标值之间的相关系数都会变成 1"
-    ],
-    answer: "横轴和纵轴变成标准化后的数值尺度，但特征与目标值的相关方向基本不变",
-    explanation: "标准化会把原始数值转换到更容易比较的尺度上，例如均值接近 0、标准差接近 1，因此散点图的横轴和纵轴范围会发生变化。但标准化只是改变数值尺度，不会改变变量之间的基本线性关系方向，所以相关系数的正负方向通常保持不变。"
-  },
-  {
-    id: "preprocess_standardized_candidate_features",
-    module: "数据预处理",
-    title: "标准数据可视化",
-    page: "preprocess",
-    step: "standard_viz",
-    operation: "请先选择特征，分别观察标准化前后的散点图和趋势线，再结合下方“全特征线性相关系数”图，判断哪些特征与 MEDV 的线性关系更明显。",
-    hint: "LSTAT 与 RM 通常是与 MEDV 线性关系最明显的两个候选特征。",
-    question: "根据右侧“全特征线性相关系数”图，哪两个特征与目标值 MEDV 的线性关系最明显，更适合作为线性回归的候选特征？",
-    type: "single",
-    options: ["RAD 和 B", "CHAS 和 DIS", "LSTAT 和 RM", "ZN 和 CHAS"],
-    answer: "LSTAT 和 RM",
-    explanation: "从全特征线性相关系数排序看，LSTAT 和 RM 与 MEDV 的线性关系最明显，更适合作为简单线性回归的候选特征。"
-  },
-  {
-    id: "train_regression_process",
+    id: "train_alpha_config",
     module: "模型训练",
-    title: "熟悉回归过程",
+    title: "配置并训练朴素贝叶斯",
     page: "train_eval",
-    step: "process",
-    operation: "请在右侧“特征选择”中选择 RM 特征，点击“单步训练”或“自动演示”，观察当前回归线如何随着训练逐步调整，并与最优参考线进行比较。重点关注：回归线的斜率 w 和截距 b 如何变化，模型是否逐渐拟合散点的整体上升趋势。",
-    hint: "关注 w、b 和 Loss 随训练轮次的变化。",
-    question: "简单线性回归的预测函数是什么？",
-    type: "single",
-    options: ["y_pred = w * x + b", "y_pred = x / w + b", "loss = w + b", "x = y * b"],
-    answer: "y_pred = w * x + b",
-    explanation: "简单线性回归用一条直线表示输入特征 x 和预测值 y_pred 的关系，核心形式是 y_pred = w * x + b。"
-  },
-  {
-    id: "train_preprocess_effect",
-    module: "模型训练",
-    title: "熟悉预处理影响",
-    page: "train_eval",
-    step: "preprocess_effect",
-    operation: "请在右侧“特征选择”中选择 RM 特征，保持相同学习率，分别观察左侧原始尺度散点图和右侧标准化散点图中的训练过程。点击“单步训练”或“自动演示”，重点比较两种情况下当前回归线的变化是否稳定、是否逐渐接近最优参考线，以及 Loss 是否呈下降趋势。",
-    hint: "未标准化数据的数值尺度可能更大，过大的学习率会让参数更新变得不稳定。",
-    question: "在选择 RM 特征后，如果使用原始尺度数据且学习率过大，训练过程最可能出现什么现象？",
+    step: "nb_train",
+    operation: "选择 MultinomialNB，设置平滑系数 α，点击【开始训练】，观察训练集与测试集准确率。",
+    hint: "α 控制拉普拉斯平滑强度，用来缓解未见词导致的零概率问题。",
+    question: "拉普拉斯平滑 α 的核心作用是什么？",
     type: "single",
     options: [
-      "模型会自动完成标准化，所以训练不受影响",
-      "Loss 一定会快速下降到 0",
-      "参数更新幅度过大，回归线来回跳动，Loss 可能越来越大",
-      "样本数量会自动减少，训练会更稳定"
+      "让未在某类出现过的词仍然拥有非零概率",
+      "把所有文本变成同一个类别",
+      "删除测试集",
+      "把分类任务改成回归任务"
     ],
-    answer: "参数更新幅度过大，回归线来回跳动，Loss 可能越来越大",
-    explanation: "不进行标准化时，原始特征的数值尺度可能较大，不同变量的取值范围差异明显。如果学习率也设置得过大，每次参数更新的步子就可能过大，导致模型越过最优位置，表现为回归线来回跳动、Loss 不下降，甚至越来越大。标准化可以把数据调整到更接近的尺度上，使梯度下降过程更稳定。"
+    answer: "让未在某类出现过的词仍然拥有非零概率",
+    explanation: "没有平滑时，某个词在某类中频数为 0 会让连乘概率归零。平滑给每个词一个极小的概率底座。"
   },
   {
-    id: "train_loss_function",
+    id: "train_confusion_matrix",
     module: "模型训练",
-    title: "熟悉损失函数",
+    title: "阅读混淆矩阵",
     page: "train_eval",
-    step: "loss",
-    operation: "请在右侧“特征选择”中选择 RM 特征，观察左侧“残差与回归线”和右侧“整体差分布”图。重点查看单个样本的真实值 y、预测值 ŷ 和残差 e 之间的关系，并理解多个样本的平方误差求平均后如何得到 MSE。",
-    hint: "损失函数越小，表示当前直线整体上越贴近样本点。",
-    question: "MSE 主要衡量什么？",
-    type: "single",
-    options: ["预测误差平方的平均值", "样本数量", "特征列名称", "页面刷新速度"],
-    answer: "预测误差平方的平均值",
-    explanation: "MSE 是 mean((y - y_pred) ** 2)，表示预测误差平方后的平均水平。"
-  },
-  {
-    id: "train_loss_residual",
-    module: "模型训练",
-    title: "熟悉损失函数",
-    page: "train_eval",
-    step: "loss",
-    operation: "请在右侧“特征选择”中选择 RM 特征，观察左侧“残差与回归线”和右侧“整体差分布”图。重点查看单个样本的真实值 y、预测值 ŷ 和残差 e 之间的关系，并理解多个样本的平方误差求平均后如何得到 MSE。",
-    hint: "残差表示真实值与预测值之间的差距。",
-    question: "选择 RM 特征后，在“残差与回归线”图中，残差主要表示什么？",
+    step: "nb_train",
+    operation: "训练完成后查看混淆矩阵，比较每个类别的正确分类和误分类数量。",
+    hint: "混淆矩阵的行表示真实类别，列表示预测类别。",
+    question: "混淆矩阵中某一行的非对角线数量表示什么？",
     type: "single",
     options: [
-      "学习率的大小",
-      "RM 特征本身的取值范围",
-      "样本数量的变化",
-      "样本真实值 y 与预测值 ŷ 之间的差距"
+      "该真实类别被模型错分到其他类别的样本数",
+      "该类别的先验概率一定为 0",
+      "词表中的总词数",
+      "模型训练轮数"
     ],
-    answer: "样本真实值 y 与预测值 ŷ 之间的差距",
-    explanation: "残差通常表示真实值 y 与预测值 ŷ 之间的差距。残差越小，说明当前样本的预测越接近真实值。"
+    answer: "该真实类别被模型错分到其他类别的样本数",
+    explanation: "对角线是预测正确，非对角线是该真实类别被误判成其他类别。"
   },
   {
-    id: "train_optimization_rule",
+    id: "train_conditional_prob",
     module: "模型训练",
-    title: "熟悉优化准则",
+    title: "理解条件概率",
     page: "train_eval",
-    step: "optimization",
-    operation: "请在右侧“特征选择”中选择 RM 特征，设置参数，点击“单步训练”或“自动演示”，观察 3D Loss 曲面图、Loss 等高线图和 MSE Loss 随 epoch 的变化。重点关注当前参数点如何沿着 Loss 下降方向移动，w 和 b 如何更新，以及 MSE Loss 是否整体呈下降趋势。",
-    hint: "梯度下降会不断调整 w 和 b，让损失函数逐步减小。",
-    question: "在梯度下降中，参数 w 和 b 的更新目标是什么？",
+    step: "nb_prob",
+    operation: "进入概率学习，查询 space、engine 等词，比较它们在两个类别下的 P(word|class)。",
+    hint: "同一个词在不同类别下的条件概率差异越明显，分类贡献通常越强。",
+    question: "朴素贝叶斯中的 P(word|class) 表示什么？",
     type: "single",
     options: [
-      "随机改变 w 和 b，只要图像发生变化即可",
-      "沿着 Loss 下降的方向移动，使损失值逐步变小",
-      "沿着 Loss 增大的方向移动，使模型误差变大",
-      "固定 w 和 b 不变，只观察样本点分布"
+      "在给定类别下看到某个词的概率",
+      "某个类别的样本总数",
+      "测试集准确率",
+      "页面渲染耗时"
     ],
-    answer: "沿着 Loss 下降的方向移动，使损失值逐步变小",
-    explanation: "梯度下降的目标是不断调整参数 w 和 b，使损失函数 Loss 逐步减小。在图中可以把当前参数点看作站在 Loss 曲面上的一个位置，更新时会沿着 Loss 下降的方向移动，也就是负梯度方向。这样模型预测误差会逐渐减小，回归线也会逐步接近更好的拟合效果。"
+    answer: "在给定类别下看到某个词的概率",
+    explanation: "条件概率描述词与类别的关联强度，是朴素贝叶斯计算文档后验得分的关键组成。"
   },
   {
-    id: "train_optimization_loss_trend",
+    id: "train_decision_deduction",
     module: "模型训练",
-    title: "熟悉优化准则",
+    title: "查看决策推演",
     page: "train_eval",
-    step: "optimization",
-    operation: "请在右侧“特征选择”中选择 RM 特征，设置参数，点击“单步训练”或“自动演示”，观察 3D Loss 曲面图、Loss 等高线图和 MSE Loss 随 epoch 的变化。重点关注当前参数点如何沿着 Loss 下降方向移动，w 和 b 如何更新，以及 MSE Loss 是否整体呈下降趋势。",
-    hint: "有效优化时，MSE Loss 通常会逐步下降。",
-    question: "选择 RM 特征并开始训练后，如果优化过程是有效的，MSE Loss 曲线通常应该呈现什么趋势？",
+    step: "nb_predict",
+    operation: "随机抽取测试样本，观察原文、高亮贡献词、后验概率柱状图和 log 得分拆解。",
+    hint: "分类结果来自先验项和各个词条件概率贡献的累加。",
+    question: "为什么页面用 log P(c) + Σ log P(w|c) 展示推演？",
     type: "single",
     options: [
-      "随机改变 w 和 b，只要图像发生变化即可",
-      "沿着 Loss 下降的方向移动，使损失值逐步变小",
-      "沿着 Loss 增大的方向移动，使模型误差变大",
-      "固定 w 和 b 不变，只观察样本点分布"
+      "为了把很多小概率的连乘转换成更稳定的加法计算",
+      "为了隐藏真实预测结果",
+      "为了强制两个类别概率相等",
+      "为了替代文本清洗"
     ],
-    answer: "沿着 Loss 下降的方向移动，使损失值逐步变小",
-    explanation: "如果优化过程有效，参数会沿着使 Loss 下降的方向更新，MSE Loss 曲线整体应逐步变小。"
+    answer: "为了把很多小概率的连乘转换成更稳定的加法计算",
+    explanation: "概率连乘容易数值下溢，取对数后可以转成求和，计算更稳定，也更容易解释每个词的贡献。"
   },
   {
-    id: "train_custom_params",
-    module: "模型训练",
-    title: "自定义参数训练",
-    page: "train_eval",
-    step: "custom",
-    operation: "请在右侧“特征选择”中选择 RM 特征，设置初始参数 w、b、学习率和训练轮数，然后点击“单步训练”或“自动演示”完成一次模型训练。训练过程中请观察回归线、MSE Loss、w 参数轨迹和 b 参数轨迹的变化。注意：本步骤训练得到的模型参数将作为后续“模型评估”和“模型预测”模块使用的模型基础。",
-    hint: "学习率过大可能震荡，过小则收敛较慢。",
-    question: "自定义训练中，学习率主要影响什么？",
-    type: "single",
-    options: ["浏览器窗口宽度", "数据集字段数量", "目标列名称", "每次参数更新的步长"],
-    answer: "每次参数更新的步长",
-    explanation: "学习率控制 w 和 b 每次沿梯度方向移动的幅度。"
-  },
-  {
-    id: "train_custom_early_stop",
-    module: "模型训练",
-    title: "自定义参数训练",
-    page: "train_eval",
-    step: "custom",
-    operation: "请在右侧“特征选择”中选择 RM 特征，设置初始参数 w、b、学习率和训练轮数，然后点击“单步训练”或“自动演示”完成一次模型训练。训练过程中请观察回归线、MSE Loss、w 参数轨迹和 b 参数轨迹的变化。注意：本步骤训练得到的模型参数将作为后续“模型评估”和“模型预测”模块使用的模型基础。",
-    hint: "自动演示会在达到轮数、Loss 发散或判断收敛时停止。",
-    question: "选择 RM 特征，当初始参数 w=0、b=0，训练轮数设置为 120 时，如果训练在达到 120 轮之前停止，最可能的原因是什么？",
-    type: "single",
-    options: [
-      "Loss 连续多轮变化很小，系统判断模型已经基本收敛并提前停止",
-      "样本数量不足，所以训练轮数被自动减少",
-      "RM 特征不能用于简单线性回归训练",
-      "浏览器显示错误，实际并没有停止"
-    ],
-    answer: "Loss 连续多轮变化很小，系统判断模型已经基本收敛并提前停止",
-    explanation: "自动演示允许提前停止。如果 Loss 连续多轮变化很小，系统会认为模型已经基本收敛，因此当前轮次可能小于设置的最大训练轮数。"
-  },
-  {
-    id: "evaluate_metrics",
+    id: "evaluate_threshold",
     module: "模型评估",
-    title: "模型评估",
+    title: "调整分类阈值",
+    page: "evaluate",
+    step: "threshold",
+    operation: "拖动评估页阈值滑块，观察混淆矩阵、Precision、Recall 和 F1 的变化。",
+    hint: "当前阈值控制的是判为概率列对应正类的严格程度。",
+    question: "提高正类判定阈值通常会带来什么变化？",
+    type: "single",
+    options: [
+      "判为正类更严格，Precision 通常上升，Recall 通常下降",
+      "所有指标都必然变成 100%",
+      "训练集样本会自动增加",
+      "词袋向量会被删除"
+    ],
+    answer: "判为正类更严格，Precision 通常上升，Recall 通常下降",
+    explanation: "阈值越高，模型越谨慎地判为正类。误报会减少，但漏报可能增加。"
+  },
+  {
+    id: "evaluate_metric_choice",
+    module: "模型评估",
+    title: "理解分类指标",
     page: "evaluate",
     step: "metrics",
-    operation: "请观察左侧 RM 特征训练得到的回归线与散点分布，并依次点击查看 RMSE、MAE 和 R² 三个评估指标。",
-    hint: "RMSE 和 MAE 越小通常越好，R² 越接近 1 通常拟合越好。",
-    question: "当前模型已经完成训练并基本收敛，但评估指标显示拟合效果一般，这更可能说明什么？",
+    operation: "结合动态混淆矩阵阅读 Accuracy、Precision、Recall 和 F1，判断单看准确率是否足够。",
+    hint: "Precision 关注判为正类的样本有多少是真的，Recall 关注真实正类有多少被找出来。",
+    question: "F1 值主要综合了哪两个指标？",
     type: "single",
     options: [
-      "只要训练收敛，RMSE、MAE 和 R² 一定都会非常理想",
-      "模型一定训练失败，不能用于任何预测",
-      "模型在当前单特征条件下已经尽力拟合，但仅使用 RM 一个特征无法解释 MEDV 的全部变化",
-      "评估指标一般说明数据集被删除了"
+      "Precision 和 Recall",
+      "RMSE 和 MAE",
+      "学习率和训练轮数",
+      "样本编号和页面宽度"
     ],
-    answer: "模型在当前单特征条件下已经尽力拟合，但仅使用 RM 一个特征无法解释 MEDV 的全部变化",
-    explanation: "训练收敛只说明当前参数已经较稳定，并不代表单特征线性模型能解释目标值的全部变化。只使用 RM 时，模型可能已经尽力拟合，但仍会遗漏其他影响 MEDV 的因素。"
+    answer: "Precision 和 Recall",
+    explanation: "F1 是 Precision 与 Recall 的调和平均，适合观察两者的综合平衡。"
   },
   {
-    id: "predict_input",
+    id: "predict_custom_text",
     module: "模型预测",
-    title: "模型预测",
+    title: "输入文本并解释预测",
     page: "predict",
     step: "predict",
-    operation: "请确认当前模型来自前面“自定义参数训练”步骤，特征为 RM。在右侧输入类型中选择“原始特征值”，输入 6.5，点击“开始预测”。观察左侧预测点、右侧预测结果卡片和下方预测计算过程，记录模型输入 x、预测 MEDV 以及计算过程中的标准化与还原步骤。",
-    hint: "线性回归预测会使用当前模型参数和输入特征值计算预测结果。",
-    question: "当输入原始值 RM=6.5 并点击“开始预测”后，模型预测的 MEDV 大约是多少？",
+    operation: "在预测页选择预设样本或输入自定义文本，查看预测类别、置信度、贡献词和拔河决策天平。",
+    hint: "观察贡献词是否符合对应类别主题，而不只看最终标签。",
+    question: "预测页中贡献词列表最适合用来判断什么？",
     type: "single",
-    options: ["24.50", "20.12", "28.87", "22.96"],
-    answer: "24.50",
-    explanation: "在当前设计的 RM 单特征模型下，输入原始值 RM=6.5 后，预测 MEDV 约为 24.50。"
+    options: [
+      "模型为什么倾向某个类别",
+      "浏览器窗口高度",
+      "训练按钮是否存在",
+      "CSV 是否包含 MEDV"
+    ],
+    answer: "模型为什么倾向某个类别",
+    explanation: "贡献词展示了哪些词把后验得分推向某个类别，是解释文本分类结果的重要依据。"
   }
 ];
 
@@ -851,6 +745,8 @@ function resetExperimentPagesForTest() {
     "trainProgressStepV1",
     "evaluateMetricModeV1",
     "evaluateSelectedViewsV1",
+    "activeNbTrainStep",
+    "nbTrainProgressStep",
     "predictFormStateV1",
     "predictSelectedViewsV2"
   ].forEach(key => {
@@ -861,10 +757,17 @@ function resetExperimentPagesForTest() {
   viewStateStore.preprocessProgressStepV1 = "load";
   viewStateStore.activeTrainStepV1 = "process";
   viewStateStore.trainProgressStepV1 = "process";
-  viewStateStore.evaluateMetricModeV1 = "rmse";
+  viewStateStore.activeNbTrainStep = "nb_train";
+  viewStateStore.nbTrainProgressStep = "nb_train";
+  if (typeof activeNbTrainStep !== "undefined") activeNbTrainStep = "nb_train";
+  if (typeof nbTrainProgressStep !== "undefined") nbTrainProgressStep = "nb_train";
+  if (typeof nbTrainData !== "undefined") nbTrainData = null;
+  if (typeof nbProbeData !== "undefined") nbProbeData = null;
+  if (typeof nbPredictData !== "undefined") nbPredictData = null;
+  viewStateStore.evaluateMetricModeV1 = "accuracy";
   viewStateStore.predictFormStateV1 = {
-    predictInput: "6.5",
-    predictInputMode: "raw"
+    predictInput: "The engine and tires need repair before the race.",
+    predictInputMode: "custom"
   };
 }
 
@@ -905,9 +808,21 @@ function goToExperimentTestNode(index) {
   }
   if (node.page === "train_eval") {
     stopAuto?.();
-    activeTrainStep = node.step;
-    viewStateStore.activeTrainStepV1 = node.step;
-    markTrainProgress?.(node.step);
+    if (String(node.step || "").startsWith("nb_")) {
+      if (typeof activeNbTrainStep !== "undefined") activeNbTrainStep = node.step;
+      viewStateStore.activeNbTrainStep = node.step;
+      if (typeof nbTrainProgressStep !== "undefined") {
+        const order = ["nb_train", "nb_prob", "nb_predict"];
+        const currentIdx = order.indexOf(node.step);
+        const progressIdx = order.indexOf(nbTrainProgressStep);
+        if (currentIdx > progressIdx) nbTrainProgressStep = node.step;
+        viewStateStore.nbTrainProgressStep = nbTrainProgressStep;
+      }
+    } else {
+      activeTrainStep = node.step;
+      viewStateStore.activeTrainStepV1 = node.step;
+      markTrainProgress?.(node.step);
+    }
   }
   enterExperimentBehaviorStep(index);
   setPage(node.page);
@@ -937,10 +852,10 @@ function experimentTestIntroHtml() {
       <h2>按完整实验流程完成一次测试</h2>
       <p>本测试将依次覆盖数据预处理、模型训练、模型评估和模型预测。每个节点需要先查看当前任务提示，再回到原实验页面完成观察或操作。</p>
       <div class="test-flow-grid">
-        <div><strong>1. 数据预处理</strong><span>加载、详情、原始可视化、标准化</span></div>
-        <div><strong>2. 模型训练</strong><span>回归过程、预处理影响、损失、优化、自定义训练</span></div>
-        <div><strong>3. 模型评估</strong><span>RMSE、MAE、R² 指标理解</span></div>
-        <div><strong>4. 模型预测</strong><span>输入样本并理解预测计算过程</span></div>
+        <div><strong>1. 数据预处理</strong><span>加载、清洗分词、向量化、词频、划分</span></div>
+        <div><strong>2. 模型训练</strong><span>训练、混淆矩阵、条件概率、决策推演</span></div>
+        <div><strong>3. 模型评估</strong><span>阈值、Accuracy、Precision、Recall、F1</span></div>
+        <div><strong>4. 模型预测</strong><span>输入文本并解释分类结果</span></div>
       </div>
       <div class="test-rule-box">
         <strong>测试规则</strong>
@@ -1304,7 +1219,7 @@ function recordExperimentClickBehavior(event) {
   }
   if (target.closest("#loadDatasetBtn")) {
     recordExperimentBehavior("load_dataset", {
-      dataset: document.querySelector("#datasetSelect")?.value || "boston_housing"
+      dataset: document.querySelector("#datasetSelect")?.value || "twenty_newsgroups"
     });
     return;
   }
@@ -1318,11 +1233,24 @@ function recordExperimentClickBehavior(event) {
     recordExperimentBehavior("step_tab_click", { step: trainStep.dataset.trainStep });
     return;
   }
+  const nbTrainStep = target.closest("[data-nb-step]");
+  if (nbTrainStep && node?.page === "train_eval" && nbTrainStep.dataset.nbStep === node.step) {
+    recordExperimentBehavior("nb_step_tab_click", { step: nbTrainStep.dataset.nbStep });
+    return;
+  }
   const codeButton = target.closest("[data-preprocess-code], [data-train-code], [data-evaluate-code], [data-predict-code]");
   if (codeButton) {
     recordExperimentBehavior("view_code", {
       code: codeButton.dataset.preprocessCode || codeButton.dataset.trainCode || codeButton.dataset.evaluateCode || codeButton.dataset.predictCode || ""
     });
+    return;
+  }
+  if (target.closest("#nbStartTrainBtn")) {
+    recordExperimentBehavior("nb_train_start", { step: "nb_train" });
+    return;
+  }
+  if (target.closest("#nbRandomSampleBtn")) {
+    recordExperimentBehavior("nb_random_sample", { step: "nb_predict" });
     return;
   }
   if (target.closest("#stepBtn")) {

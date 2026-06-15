@@ -5,7 +5,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_ROOT = BASE_DIR / "models"
-DEFAULT_MODEL_ID = "simple_linear_regression"
+DEFAULT_MODEL_ID = "naive_bayes"
 
 
 def _load_module(path: Path, namespace: str, root: Path):

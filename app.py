@@ -231,7 +231,7 @@ def api_ai_assistant():
                 safe_history.append({"role": role, "content": content[:1200]})
 
         system_prompt = (
-            "你是一个简单线性回归 Web 教学实验的 AI 学习助手。"
+            "你是一个朴素贝叶斯文本分类 Web 教学实验的 AI 学习助手。"
             "你的目标是帮助初学者知道当前应该做什么、观察什么、理解什么。"
             "回答必须使用中文，简洁具体，优先贴合当前实验页面和步骤。"
             "不要编造页面上不存在的按钮、数据或图表。"

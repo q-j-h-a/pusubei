@@ -2,7 +2,7 @@
 
 window.currentExperiment = window.currentExperiment || DEFAULT_EXPERIMENT_ID;
 
-const SHELL_LAYOUT_KEY = "linearRegressionShellLayoutV1";
+const SHELL_LAYOUT_KEY = "naiveBayesShellLayoutV1";
 const SHELL_SPLITTER_WIDTH = 8;
 const SHELL_DEFAULT_LAYOUT = { leftRatio: 0.16, rightRatio: 0.20 };
 const SHELL_LIMITS = {

@@ -552,6 +552,41 @@ let nbCachedRocPoints = null;
 let nbCachedPrPoints = null;
 let nbCachedAuc = null;
 
+function nbEvalClassName(index) {
+  return nbTrainData?.target_names?.[index] || `类别 ${index}`;
+}
+
+function nbEvalClassIcon(name, index) {
+  const text = String(name || "").toLowerCase();
+  if (text.includes("auto") || text.includes("car")) return "🚗";
+  if (text.includes("space")) return "🚀";
+  return index === 0 ? "①" : "②";
+}
+
+function nbEvalPositiveIndex() {
+  const index = Number(nbTrainData?.positive_label_index);
+  return Number.isInteger(index) ? index : 1;
+}
+
+function nbEvalNegativeIndex() {
+  return nbEvalPositiveIndex() === 0 ? 1 : 0;
+}
+
+function nbEvalLabelSet() {
+  const posIndex = nbEvalPositiveIndex();
+  const negIndex = nbEvalNegativeIndex();
+  const posName = nbEvalClassName(posIndex);
+  const negName = nbEvalClassName(negIndex);
+  return {
+    posIndex,
+    negIndex,
+    posName,
+    negName,
+    posIcon: nbEvalClassIcon(posName, posIndex),
+    negIcon: nbEvalClassIcon(negName, negIndex),
+  };
+}
+
 async function renderNbEvaluateShell() {
   document.querySelector(".shell").classList.remove("theory");
   
@@ -717,6 +752,7 @@ async function renderNbEvaluateShell() {
   nbCachedRocPoints = null;
   nbCachedPrPoints = null;
   nbCachedAuc = null;
+  const labels = nbEvalLabelSet();
 
   // 渲染右侧面板
   $("rightPanel").innerHTML = `
@@ -745,17 +781,17 @@ async function renderNbEvaluateShell() {
               </div>
               <input type="range" class="nb-slider-input" id="nbEvalThresholdSlider" min="0.00" max="1.00" step="0.01" value="0.50">
               <div style="display:flex; justify-content:space-between; font-size:10px; color:#868e96; margin-top:4px;">
-                <span>倾向 🚀 ${nbTrainData.target_names[0]} (更宽松)</span>
-                <span>倾向 🚗 ${nbTrainData.target_names[1]} (更严格)</span>
+                <span>低阈值：更容易判为 ${labels.posIcon} ${escapeHtml(labels.posName)}</span>
+                <span>高阈值：更容易保留 ${labels.negIcon} ${escapeHtml(labels.negName)}</span>
               </div>
             </div>
             
             <div style="margin-bottom: 4px;">
               <span style="font-size:11px; color:#6c757d; font-weight:bold; display:block; margin-bottom:6px;">业务快捷场景：</span>
               <div style="display:flex; gap:8px;">
-                <button class="nb-scenario-btn" id="nbScenarioConserv">极端保守 (汽车不漏报)</button>
+                <button class="nb-scenario-btn" id="nbScenarioConserv">${escapeHtml(labels.posName)} 高召回</button>
                 <button class="nb-scenario-btn active" id="nbScenarioDefault">默认均衡 (0.50)</button>
-                <button class="nb-scenario-btn" id="nbScenarioPrecise">极端精确 (航天不误判)</button>
+                <button class="nb-scenario-btn" id="nbScenarioPrecise">${escapeHtml(labels.posName)} 高精确</button>
               </div>
             </div>
           </div>
@@ -773,19 +809,19 @@ async function renderNbEvaluateShell() {
             <div class="nb-cm-grid">
               <div class="nb-cm-cell correct">
                 <div class="nb-cm-cell-val" id="nbCellTN">--</div>
-                <div class="nb-cm-cell-lbl">真阴性 TN (航天猜对)</div>
+                <div class="nb-cm-cell-lbl">真阴性 TN (${labels.negIcon} ${escapeHtml(labels.negName)} 猜对)</div>
               </div>
               <div class="nb-cm-cell mistake">
                 <div class="nb-cm-cell-val" id="nbCellFP">--</div>
-                <div class="nb-cm-cell-lbl">假阳性 FP (航天认错)</div>
+                <div class="nb-cm-cell-lbl">假阳性 FP (${labels.negIcon} ${escapeHtml(labels.negName)} 误判为 ${escapeHtml(labels.posName)})</div>
               </div>
               <div class="nb-cm-cell mistake">
                 <div class="nb-cm-cell-val" id="nbCellFN">--</div>
-                <div class="nb-cm-cell-lbl">假阴性 FN (汽车漏报)</div>
+                <div class="nb-cm-cell-lbl">假阴性 FN (${labels.posIcon} ${escapeHtml(labels.posName)} 漏报)</div>
               </div>
               <div class="nb-cm-cell correct">
                 <div class="nb-cm-cell-val" id="nbCellTP">--</div>
-                <div class="nb-cm-cell-lbl">真阳性 TP (汽车猜对)</div>
+                <div class="nb-cm-cell-lbl">真阳性 TP (${labels.posIcon} ${escapeHtml(labels.posName)} 猜对)</div>
               </div>
             </div>
             
@@ -854,18 +890,19 @@ function updateNbEvalMetrics() {
   if (!nbTrainData || !nbTrainData.eval_samples) return;
   const samples = nbTrainData.eval_samples;
   const theta = nbEvalThreshold;
+  const labels = nbEvalLabelSet();
   
   let tp = 0, fp = 0, tn = 0, fn = 0;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     const true_label = s.true_label;
     const prob = s.prob;
-    const pred_label = (prob >= theta) ? 1 : 0;
+    const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
     
-    if (true_label === 1 && pred_label === 1) tp++;
-    else if (true_label === 0 && pred_label === 1) fp++;
-    else if (true_label === 0 && pred_label === 0) tn++;
-    else if (true_label === 1 && pred_label === 0) fn++;
+    if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
+    else if (true_label === labels.negIndex && pred_label === labels.posIndex) fp++;
+    else if (true_label === labels.negIndex && pred_label === labels.negIndex) tn++;
+    else if (true_label === labels.posIndex && pred_label === labels.negIndex) fn++;
   }
   
   const acc = (tp + tn) / samples.length;
@@ -885,11 +922,11 @@ function updateNbEvalMetrics() {
   
   let sceneDesc = "";
   if (theta <= 0.20) {
-    sceneDesc = `📢 <strong>极端保守（不漏过任何汽车贴）</strong>：阈值 θ = ${theta.toFixed(2)}。汽车召回率高，但错杀了很多航天贴（假阳性 FP 增加，精确率 Precision 降低）。适用于极其重视“漏报”的场景。`;
+    sceneDesc = `📢 <strong>${escapeHtml(labels.posName)} 高召回</strong>：阈值 θ = ${theta.toFixed(2)}。系统更容易判为 ${escapeHtml(labels.posName)}，召回率通常更高，但 ${escapeHtml(labels.negName)} 被误判为 ${escapeHtml(labels.posName)} 的假阳性 FP 会增加。`;
   } else if (theta >= 0.80) {
-    sceneDesc = `📢 <strong>极端精确（绝不把航天误判）</strong>：阈值 θ = ${theta.toFixed(2)}。汽车精确率高，但漏报了大量的汽车贴（假阴性 FN 增加，召回率 Recall 降低）。常用于拦截垃圾短信。`;
+    sceneDesc = `📢 <strong>${escapeHtml(labels.posName)} 高精确</strong>：阈值 θ = ${theta.toFixed(2)}。系统更谨慎地判为 ${escapeHtml(labels.posName)}，精确率通常更高，但 ${escapeHtml(labels.posName)} 被漏判为 ${escapeHtml(labels.negName)} 的假阴性 FN 会增加。`;
   } else {
-    sceneDesc = `📢 <strong>均衡模式（默认）</strong>：阈值 θ = ${theta.toFixed(2)}。兼顾精确率与召回率，整体分类 F1-score 处于较高的最优状态。`;
+    sceneDesc = `📢 <strong>均衡模式（默认）</strong>：阈值 θ = ${theta.toFixed(2)}。在 ${escapeHtml(labels.posName)} 的精确率与召回率之间取折中，整体分类 F1-score 更稳定。`;
   }
   $("nbEvalSceneText").innerHTML = sceneDesc;
   
@@ -910,13 +947,14 @@ function selectNbScenario(val, btnId) {
 function calculateNbEvalCurves() {
   if (!nbTrainData || !nbTrainData.eval_samples) return;
   const samples = nbTrainData.eval_samples;
+  const labels = nbEvalLabelSet();
   
   const roc = [];
   const pr = [];
   
   // 计算 AUC
-  let pos = samples.filter(x => x.true_label === 1);
-  let neg = samples.filter(x => x.true_label === 0);
+  let pos = samples.filter(x => x.true_label === labels.posIndex);
+  let neg = samples.filter(x => x.true_label === labels.negIndex);
   let aucSum = 0;
   if (pos.length > 0 && neg.length > 0) {
     for (let i = 0; i < pos.length; i++) {
@@ -941,12 +979,12 @@ function calculateNbEvalCurves() {
       const s = samples[i];
       const true_label = s.true_label;
       const prob = s.prob;
-      const pred_label = (prob >= theta) ? 1 : 0;
+      const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
       
-      if (true_label === 1 && pred_label === 1) tp++;
-      else if (true_label === 0 && pred_label === 1) fp++;
-      else if (true_label === 0 && pred_label === 0) tn++;
-      else if (true_label === 1 && pred_label === 0) fn++;
+      if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
+      else if (true_label === labels.negIndex && pred_label === labels.posIndex) fp++;
+      else if (true_label === labels.negIndex && pred_label === labels.negIndex) tn++;
+      else if (true_label === labels.posIndex && pred_label === labels.negIndex) fn++;
     }
     
     const tpr = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
@@ -976,18 +1014,19 @@ function drawNbEvalCurve(onlyUpdateDot = false) {
   
   // 计算当前点
   const theta = nbEvalThreshold;
+  const labels = nbEvalLabelSet();
   let tp = 0, fp = 0, tn = 0, fn = 0;
   const samples = nbTrainData.eval_samples;
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     const true_label = s.true_label;
     const prob = s.prob;
-    const pred_label = (prob >= theta) ? 1 : 0;
+    const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
     
-    if (true_label === 1 && pred_label === 1) tp++;
-    else if (true_label === 0 && pred_label === 1) fp++;
-    else if (true_label === 0 && pred_label === 0) tn++;
-    else if (true_label === 1 && pred_label === 0) fn++;
+    if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
+    else if (true_label === labels.negIndex && pred_label === labels.posIndex) fp++;
+    else if (true_label === labels.negIndex && pred_label === labels.negIndex) tn++;
+    else if (true_label === labels.posIndex && pred_label === labels.negIndex) fn++;
   }
   
   const tpr = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
@@ -1005,7 +1044,7 @@ function drawNbEvalCurve(onlyUpdateDot = false) {
     const sorted = [...samples].sort((a,b) => b.prob - a.prob);
     let correctCount = 0;
     for (let i = 0; i < sorted.length; i++) {
-      if (sorted[i].true_label === 1) {
+      if (sorted[i].true_label === labels.posIndex) {
         correctCount++;
         apSum += correctCount / (i + 1);
       }
@@ -1112,6 +1151,7 @@ function openNbEvaluateCodeDrawer() {
   const f1 = parseFloat($("nbEvalF1").textContent) / 100;
   const acc = parseFloat($("nbEvalAcc").textContent) / 100;
   const targetNames = nbTrainData.target_names;
+  const labels = nbEvalLabelSet();
   
   const spec = {
     title: "模型评估（分类阈值调整与计算）",
@@ -1124,18 +1164,18 @@ from sklearn.metrics import classification_report, roc_curve, auc
 
 # 1. 拟合与预测概率
 # X_test_tfidf 为特征矩阵，clf 为训练好的 MultinomialNB 实例
-y_prob_c1 = clf.predict_proba(X_test_tfidf)[:, 1] # 取得属于类别 1 (汽车) 的后验概率
+y_prob_positive = clf.predict_proba(X_test_tfidf)[:, ${labels.posIndex}] # 取得属于 ${labels.posName} 的后验概率
 
 # 2. 动态调节分类决策阈值
 threshold = ${theta.toFixed(2)}
-y_pred_dynamic = np.where(y_prob_c1 >= threshold, 1, 0)
+y_pred_dynamic = np.where(y_prob_positive >= threshold, ${labels.posIndex}, ${labels.negIndex})
 
 # 3. 计算混淆矩阵 (Confusion Matrix) 实时数值
 # y_test 为测试集真实标签
-tp = np.sum((y_test == 1) & (y_pred_dynamic == 1))
-fp = np.sum((y_test == 0) & (y_pred_dynamic == 1))
-fn = np.sum((y_test == 1) & (y_pred_dynamic == 0))
-tn = np.sum((y_test == 0) & (y_pred_dynamic == 0))
+tp = np.sum((y_test == ${labels.posIndex}) & (y_pred_dynamic == ${labels.posIndex}))
+fp = np.sum((y_test == ${labels.negIndex}) & (y_pred_dynamic == ${labels.posIndex}))
+fn = np.sum((y_test == ${labels.posIndex}) & (y_pred_dynamic == ${labels.negIndex}))
+tn = np.sum((y_test == ${labels.negIndex}) & (y_pred_dynamic == ${labels.negIndex}))
 
 # 4. 指标计算与当前数值展示
 accuracy = (tp + tn) / len(y_test)
@@ -1151,13 +1191,13 @@ f1_score = 2 * precision * recall / (precision + recall) if (precision + recall)
 # 当前 F1 值 f1_score = ${f1.toFixed(4)}
 
 # 5. ROC 曲线与 AUC 计算
-fpr_arr, tpr_arr, thresholds = roc_curve(y_test, y_prob_c1)
+fpr_arr, tpr_arr, thresholds = roc_curve(y_test, y_prob_positive, pos_label=${labels.posIndex})
 roc_auc = auc(fpr_arr, tpr_arr)
 # 测试集全局 AUC 面积 = ${nbCachedAuc.toFixed(4)}
     `.trim(),
     notes: [
       `模型预测输出每个类别的后验概率，阈值 θ 就是分类器的“评判标准”。`,
-      `提升阈值使得判为类别 1 变严格，通常会提高 Precision (降低误报)，但 Recall 会降低 (漏报多)。`,
+      `提升阈值使得判为 ${labels.posName} 变严格，通常会提高 Precision (降低误报)，但 Recall 会降低 (漏报多)。`,
       `ROC 曲线是不依赖单一阈值的全局性能曲线。对角线代表随机猜测，越往左上角凸起说明分类性能越好。`,
       `AUC 是 ROC 曲线下的面积，在 [0.5, 1.0] 之间，越接近 1.0 分类器分类越完美。`
     ]

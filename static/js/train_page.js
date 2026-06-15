@@ -2283,7 +2283,7 @@ async function prepareTraining() {
   try {
     trainData = await runAction("prepare_train", {
       feature,
-      dataset_id: currentDatasetMeta?.dataset_id || "boston_housing",
+      dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
       use_standardized: trainUseStandardized(),
       learning_rate: Number($("lr").value),
       epochs: Number($("epochs").value),
@@ -2319,7 +2319,7 @@ async function prepareTrainCompare() {
   const feature = $("trainFeature").value;
   const payload = {
     feature,
-    dataset_id: currentDatasetMeta?.dataset_id || "boston_housing",
+    dataset_id: currentDatasetMeta?.dataset_id || "twenty_newsgroups",
     learning_rate: Number($("lr").value),
     epochs: Number($("epochs").value),
     w0: Number($("w0").value),
@@ -3629,9 +3629,16 @@ let nbTrainData = null;       // 缓存训练完成的模型结果
 let nbProbeData = null;       // 缓存单词探针查询结果
 let nbPredictData = null;     // 缓存测试样本决策推演结果
 let nbLoading = false;
-let activeNbTrainStep = "nb_train";
-let nbTrainProgressStep = "nb_train";
+let activeNbTrainStep = viewStateStore.activeNbTrainStep || "nb_train";
+let nbTrainProgressStep = viewStateStore.nbTrainProgressStep || activeNbTrainStep;
 let nbCharts = [];
+
+function nbClassIcon(name, index) {
+  const text = String(name || "").toLowerCase();
+  if (text.includes("auto") || text.includes("car")) return "🚗";
+  if (text.includes("space")) return "🚀";
+  return index === 0 ? "①" : "②";
+}
 
 function clearNbCharts() {
   nbCharts.forEach(ch => {
@@ -4128,6 +4135,10 @@ async function renderNbTrainCurrentStep() {
         </section>
       `;
     } else {
+      const class0Name = nbTrainData.target_names[0];
+      const class1Name = nbTrainData.target_names[1];
+      const class0Icon = nbClassIcon(class0Name, 0);
+      const class1Icon = nbClassIcon(class1Name, 1);
       content.innerHTML = `
         <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
           <div class="mini-stats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 4px;">
@@ -4157,23 +4168,23 @@ async function renderNbTrainCurrentStep() {
                   <thead>
                     <tr>
                       <th>实际帖子类型</th>
-                      <th>预测为：🚀 ${nbTrainData.target_names[0]}</th>
-                      <th>预测为：🚗 ${nbTrainData.target_names[1]}</th>
+                      <th>预测为：${class0Icon} ${escapeHtml(class0Name)}</th>
+                      <th>预测为：${class1Icon} ${escapeHtml(class1Name)}</th>
                       <th>分类质量剖析 (大白话)</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td style="font-weight: 600;">🚀 实际是 ${nbTrainData.target_names[0]}</td>
+                      <td style="font-weight: 600;">${class0Icon} 实际是 ${escapeHtml(class0Name)}</td>
                       <td class="nb-cm-correct">${nbTrainData.confusion_matrix[0][0]} 篇<br><span style="font-size:10px; font-weight:normal; color:#28a745;">分类正确</span></td>
-                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[0][1]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为汽车</span></td>
-                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[nbTrainData.target_names[0]].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[0][1]} 篇。</td>
+                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[0][1]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为 ${escapeHtml(class1Name)}</span></td>
+                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[class0Name].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[0][1]} 篇。</td>
                     </tr>
                     <tr>
-                      <td style="font-weight: 600;">🚗 实际是 ${nbTrainData.target_names[1]}</td>
-                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[1][0]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为航天</span></td>
+                      <td style="font-weight: 600;">${class1Icon} 实际是 ${escapeHtml(class1Name)}</td>
+                      <td class="nb-cm-mistake" onclick="showToast?.('请点击下方的错题卡片，即可跳转推演该样本！', 'info')">${nbTrainData.confusion_matrix[1][0]} 篇<br><span style="font-size:10px; font-weight:normal; color:#dc3545;">认错为 ${escapeHtml(class0Name)}</span></td>
                       <td class="nb-cm-correct">${nbTrainData.confusion_matrix[1][1]} 篇<br><span style="font-size:10px; font-weight:normal; color:#28a745;">分类正确</span></td>
-                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[nbTrainData.target_names[1]].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[1][0]} 篇。</td>
+                      <td style="text-align: left; color:#555;">该类召回率（覆盖率）为 <strong>${(nbTrainData.class_report[class1Name].recall * 100).toFixed(1)}%</strong>，漏分类了 ${nbTrainData.confusion_matrix[1][0]} 篇。</td>
                     </tr>
                   </tbody>
                 </table>

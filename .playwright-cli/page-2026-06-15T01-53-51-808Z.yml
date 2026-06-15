@@ -1,0 +1,138 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: ML
+      - heading "简单线性回归教学实验" [level=1] [ref=e7]
+  - generic [ref=e8]:
+    - complementary [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: 理论部分
+        - generic [ref=e12]:
+          - button "实验基本信息" [ref=e13] [cursor=pointer]:
+            - strong [ref=e16]: 实验基本信息
+          - button "实验目的" [ref=e17] [cursor=pointer]:
+            - strong [ref=e20]: 实验目的
+          - button "前置知识" [ref=e21] [cursor=pointer]:
+            - strong [ref=e24]: 前置知识
+          - group [ref=e25]:
+            - generic "模型介绍 ›" [ref=e26] [cursor=pointer]:
+              - strong [ref=e29]: 模型介绍
+              - generic [ref=e30]: ›
+            - generic [ref=e31]:
+              - button "数据集" [ref=e32] [cursor=pointer]:
+                - strong [ref=e35]: 数据集
+              - button "训练模型" [ref=e36] [cursor=pointer]:
+                - strong [ref=e39]: 训练模型
+              - button "学习准则" [ref=e40] [cursor=pointer]:
+                - strong [ref=e43]: 学习准则
+              - button "参数优化" [ref=e44] [cursor=pointer]:
+                - strong [ref=e47]: 参数优化
+              - button "评价指标" [ref=e48] [cursor=pointer]:
+                - strong [ref=e51]: 评价指标
+          - button "预期成果" [ref=e52] [cursor=pointer]:
+            - strong [ref=e55]: 预期成果
+          - button "思考拓展" [ref=e56] [cursor=pointer]:
+            - strong [ref=e59]: 思考拓展
+      - generic [ref=e60]:
+        - generic [ref=e61]: 实验部分
+        - generic [ref=e62]:
+          - button "数据预处理" [ref=e63] [cursor=pointer]:
+            - strong [ref=e66]: 数据预处理
+          - button "模型训练" [ref=e67] [cursor=pointer]:
+            - strong [ref=e70]: 模型训练
+          - button "模型评估" [ref=e71] [cursor=pointer]:
+            - strong [ref=e74]: 模型评估
+          - button "模型预测" [ref=e75] [cursor=pointer]:
+            - strong [ref=e78]: 模型预测
+          - button "实验测试" [ref=e79] [cursor=pointer]:
+            - strong [ref=e82]: 实验测试
+    - separator "调整左侧导航宽度" [ref=e83]
+    - main [ref=e84]:
+      - generic [ref=e85]:
+        - navigation "理论幻灯片控制栏" [ref=e86]:
+          - generic [ref=e87]:
+            - button "上一页" [disabled] [ref=e88]: ‹
+            - generic [ref=e89]: 1 / 1
+            - button "下一页" [disabled] [ref=e90]: ›
+          - generic [ref=e91]:
+            - generic [ref=e92]: 实验基本信息
+            - generic [ref=e93]: 只读模式
+          - generic [ref=e94]:
+            - button "详情 ›" [ref=e95] [cursor=pointer]
+            - button "编辑课件" [ref=e96] [cursor=pointer]
+            - button "下载全套 PPT" [ref=e97] [cursor=pointer]
+        - article "第 1 页" [ref=e99]:
+          - generic [ref=e100]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - heading "实验基本信息" [level=1] [ref=e101]
+          - generic [ref=e102]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - paragraph [ref=e103]: 线性回归用于从房屋特征中预测连续房价 。
+          - generic [ref=e104]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - generic [ref=e106]:
+              - generic [ref=e108]: 实验名称
+              - generic [ref=e110]: 简单线性回归房价预测实验
+          - generic [ref=e111]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - generic [ref=e113]:
+              - generic [ref=e115]: 实验时长
+              - generic [ref=e117]: 建议 2 学时，约 90 分钟。
+          - generic [ref=e118]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - generic [ref=e120]:
+              - generic [ref=e122]: 实验难度
+              - generic [ref=e124]: 基础级。适合初次接触回归建模的学生。
+          - generic [ref=e125]:
+            - button "拖动组件"
+            - button "向上缩放"
+            - button "向右上缩放"
+            - button "向右缩放"
+            - button "向右下缩放"
+            - button "向下缩放"
+            - button "向左下缩放"
+            - button "向左缩放"
+            - button "向左上缩放"
+            - generic [ref=e127]:
+              - generic [ref=e129]: 实验环境
+              - generic [ref=e131]: Python 3.10+、Flask、NumPy、Pandas；

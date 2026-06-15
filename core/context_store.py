@@ -4,7 +4,7 @@ from uuid import uuid4
 
 _CONTEXTS = {}
 DEFAULT_TTL_SECONDS = 60 * 60
-DEFAULT_EXPERIMENT_ID = "simple_linear_regression"
+DEFAULT_EXPERIMENT_ID = "naive_bayes"
 
 
 def create_context(data, ttl_seconds=DEFAULT_TTL_SECONDS):

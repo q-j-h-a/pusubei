@@ -1115,6 +1115,8 @@ def prepare_train(payload: dict) -> dict:
         "misclassified_samples": misclassified_samples,
         "top_words_per_class": top_words_per_class,
         "target_names": target_names,
+        "positive_label_index": 1,
+        "positive_label_name": target_names[1] if len(target_names) > 1 else target_names[0],
         "eval_samples": eval_samples
     }
 
