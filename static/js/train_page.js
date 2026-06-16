@@ -3632,6 +3632,7 @@ let nbLoading = false;
 let activeNbTrainStep = viewStateStore.activeNbTrainStep || "nb_train";
 let nbTrainProgressStep = viewStateStore.nbTrainProgressStep || activeNbTrainStep;
 let nbCharts = [];
+let nbWordCloudMode = "discriminative"; // "discriminative" or "class_probability"
 
 function nbClassIcon(name, index) {
   const text = String(name || "").toLowerCase();
@@ -3698,9 +3699,9 @@ function bindNbTrainFlow() {
 function nbDefaultGridLayout(view) {
   return ({
     nb_overview: { x: 0, y: 0, w: 4, h: 1 },
-    nb_confusion: { x: 0, y: 1, w: 2, h: 2 },
-    nb_dictionary: { x: 2, y: 1, w: 2, h: 1 },
-    nb_alpha: { x: 2, y: 2, w: 2, h: 1 },
+    nb_confusion: { x: 0, y: 1, w: 4, h: 2 },
+    nb_dictionary: { x: 0, y: 3, w: 2, h: 2 },
+    nb_alpha: { x: 2, y: 3, w: 2, h: 2 },
     nb_wordclouds: { x: 0, y: 0, w: 4, h: 2 },
     nb_probe: { x: 0, y: 2, w: 4, h: 2 },
     nb_sample: { x: 0, y: 0, w: 4, h: 1 },
@@ -3721,6 +3722,8 @@ function normalizeNbGridLayout(view, layout = {}) {
   clean.y = Math.max(0, clean.y);
   clean.w = Math.max(1, Math.min(4, clean.w));
   clean.h = Math.max(1, clean.h);
+  const minHeights = { nb_confusion: 2, nb_dictionary: 2, nb_alpha: 2, nb_wordclouds: 2 };
+  if (minHeights[view]) clean.h = Math.max(clean.h, minHeights[view]);
   if (clean.x + clean.w > 4) clean.x = Math.max(0, 4 - clean.w);
   return clean;
 }
@@ -3735,10 +3738,11 @@ function loadNbGridLayout(mode) {
 
 function applyNbCardGrid(content, mode, viewIds) {
   if (!content) return;
-  const overview = mode === "nb_train" ? content.querySelector(".mini-stats") : null;
+  const overview = mode.startsWith("nb_train") ? content.querySelector(".mini-stats") : null;
   if (overview && !overview.closest(".chart-card")) {
     const section = document.createElement("section");
     section.className = "chart-card";
+    section.dataset.chartCard = "nb_overview";
     section.innerHTML = `
       <div class="chart-head">
         <div>
@@ -3774,7 +3778,7 @@ function applyNbCardGrid(content, mode, viewIds) {
     item.setAttribute("gs-w", layout.w);
     item.setAttribute("gs-h", layout.h);
     item.setAttribute("gs-min-w", "1");
-    item.setAttribute("gs-min-h", "1");
+    item.setAttribute("gs-min-h", view === "nb_wordclouds" ? "2" : (view === "nb_confusion" ? "2" : (view === "nb_dictionary" || view === "nb_alpha" ? "2" : "1")));
 
     const inner = document.createElement("div");
     inner.className = "grid-stack-item-content";
@@ -4284,20 +4288,32 @@ async function renderNbTrainCurrentStep() {
     content.innerHTML = `
       <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
         <section class="chart-card">
-          <div class="chart-head">
+          <div class="chart-head" style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <div class="chart-title">双类别特征词云图</div>
-              <div class="chart-sub">词的大小代表该词在所属类别的权重得分 (MultinomialNB: P(w|c), ComplementNB: 1/P(w|~c))，支持点击查概率。</div>
+              <div class="chart-sub" id="nbWordCloudSubText">词云有两种观察方式。类内高概率词用于查看某类别中常见的词；判别特征词用于查看更能拉开两个类别差异的词。朴素贝叶斯分类时，真正影响类别选择的是各词在不同类别下的 log 条件概率差异。</div>
+            </div>
+            <div class="segmented-control" role="group" aria-label="词云模式" style="margin-left: 20px; flex-shrink: 0;">
+              <button class="seg-btn ${nbWordCloudMode === 'class_probability' ? 'active' : ''}" type="button" onclick="nbWordCloudMode = 'class_probability'; renderNbWordCloudToggle();">类内高概率词</button>
+              <button class="seg-btn ${nbWordCloudMode === 'discriminative' ? 'active' : ''}" type="button" onclick="nbWordCloudMode = 'discriminative'; renderNbWordCloudToggle();">判别特征词</button>
             </div>
           </div>
-          <div id="nbWordCloudsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 10px 18px 18px 18px;">
-            <div>
-              <h4 style="margin: 0 0 10px 0; text-align: center; color: #2b5c8f; font-size: 14px; font-weight:600;" id="nbCloudTitle1">类别 1</h4>
-              <div id="nbWordCloud1" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+          <div style="display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; padding: 10px 18px 18px 18px;">
+            <div id="nbWordCloudModeExplanation" style="margin-bottom: 12px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; color: #475569; line-height: 1.5;">
+              <!-- 动态说明文案 -->
             </div>
-            <div>
-              <h4 style="margin: 0 0 10px 0; text-align: center; color: #e67e22; font-size: 14px; font-weight:600;" id="nbCloudTitle2">类别 2</h4>
-              <div id="nbWordCloud2" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+            <div id="nbWordCloudsContainer" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 12px;">
+              <div>
+                <h4 style="margin: 0 0 10px 0; text-align: center; color: #2b5c8f; font-size: 14px; font-weight:600;" id="nbCloudTitle1">类别 1</h4>
+                <div id="nbWordCloud1" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+              </div>
+              <div>
+                <h4 style="margin: 0 0 10px 0; text-align: center; color: #e67e22; font-size: 14px; font-weight:600;" id="nbCloudTitle2">类别 2</h4>
+                <div id="nbWordCloud2" style="min-height: 240px; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; border: 1px dashed #ced4da; border-radius: 6px; padding: 10px; box-sizing: border-box; background: #fff;"></div>
+              </div>
+            </div>
+            <div id="nbWordCloudFooterNote" style="font-size: 11.5px; color: #64748b; line-height: 1.4;">
+              <!-- 判别模式下的额外说明 -->
             </div>
           </div>
         </section>
@@ -4327,7 +4343,7 @@ async function renderNbTrainCurrentStep() {
 
     // 渲染词云
     applyNbCardGrid(content, "nb_prob", ["nb_wordclouds", "nb_probe"]);
-    renderNbWordClouds();
+    renderNbWordCloudToggle();
 
     // 渲染右侧面板
     $("nbTrainRightPanel").innerHTML = `
@@ -4358,7 +4374,7 @@ async function renderNbTrainCurrentStep() {
 
   } else if (activeNbTrainStep === "nb_predict") {
     content.innerHTML = `
-      <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 16px;">
         <section class="chart-card">
           <div class="chart-head">
             <div>
@@ -4372,49 +4388,47 @@ async function renderNbTrainCurrentStep() {
             </div>
           </div>
         </section>
-        
-        <div style="display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 16px;">
-          <section class="chart-card">
-            <div class="chart-head">
-              <div>
-                <div class="chart-title">分类预测概率 P(Class|Doc)</div>
-                <div class="chart-sub">通过后验得分平移进行 Softmax 归一化得到的置信度占比</div>
-              </div>
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">分类预测概率 P(Class|Doc)</div>
+              <div class="chart-sub">通过后验得分平移进行 Softmax 归一化得到的置信度占比</div>
             </div>
-            <div class="chart" id="nbPosteriorChart" style="height: 280px; min-height: 280px;"></div>
-          </section>
-          
-          <section class="chart-card">
-            <div class="chart-head">
-              <div>
-                <div class="chart-title">决策数学推导拆解</div>
-                <div class="chart-sub">展示 log P(c|d) = log P(c) + Σ log P(w|c) 贡献排名靠前的决策特征词</div>
-              </div>
-              <div style="padding: 10px 18px 18px 18px;">
-                <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
-                  ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
-                </div>
-                <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
-                <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
-                  <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
-                    <thead>
-                      <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
-                        <th style="padding: 6px;">单词</th>
-                        <th style="padding: 6px;">样本内频次</th>
-                        <th style="padding: 6px;" id="nbTableHeaderClass1">Class 1 log P</th>
-                        <th style="padding: 6px;" id="nbTableHeaderClass2">Class 2 log P</th>
-                        <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
           </div>
-        </div>
+          <div class="chart" id="nbPosteriorChart" style="height: 280px; min-height: 280px;"></div>
+        </section>
+        
+        <section class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">决策数学推导拆解</div>
+              <div class="chart-sub">展示 log P(c|d) = log P(c) + Σ log P(w|c) 贡献排名靠前的决策特征词</div>
+            </div>
+          </div>
+          <div style="padding: 10px 18px 18px 18px;">
+            <div style="background: #eef3f7; padding: 10px 12px; border-radius: 4px; font-family: monospace; font-size: 11px; margin-bottom: 12px; border-left: 4px solid #1e824c; line-height: 1.5; color: #2b5c8f;" id="nbDeductionFormula">
+              ${nbPredictData ? nbGetFormulaHtml(nbPredictData) : "等待抽取测试样本后，渲染后验得分公式推导。"}
+            </div>
+            <h5 style="margin: 0 0 6px 0; font-size: 12px; font-weight: 600; color: #495057;">最高决策贡献 Top-5 单词</h5>
+            <div class="table-wrap" style="margin:0; padding:0; border:none; background:transparent;">
+              <table style="font-size: 11px; width: 100%; border-collapse:collapse;" id="nbContribTable">
+                <thead>
+                  <tr style="border-bottom: 2px solid #dee2e6; text-align:left;">
+                    <th style="padding: 6px;">单词</th>
+                    <th style="padding: 6px;">样本内频次</th>
+                    <th style="padding: 6px;" id="nbTableHeaderClass1">${nbPredictData ? Object.keys(nbPredictData.raw_scores)[0] + ' log P' : 'Class 1 log P'}</th>
+                    <th style="padding: 6px;" id="nbTableHeaderClass2">${nbPredictData ? Object.keys(nbPredictData.raw_scores)[1] + ' log P' : 'Class 2 log P'}</th>
+                    <th style="padding: 6px; text-align:right;">贡献差异 (Δ)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${nbPredictData ? nbGetContribTableRowsHtml(nbPredictData) : `<tr><td colspan="5" style="text-align:center; color:#868e96; padding:10px;">暂无数据。</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
       `;
 
       // 渲染右侧面板
@@ -4491,7 +4505,14 @@ async function renderNbTrainCurrentStep() {
       // 更新数学拆解公式
       $("nbDeductionFormula").innerHTML = nbGetFormulaHtml(res);
       
-      // 更新表格行
+      // 更新表格行和表头
+      const rawKeys = Object.keys(res.raw_scores);
+      if (rawKeys.length >= 2) {
+        const h1 = $("nbTableHeaderClass1");
+        const h2 = $("nbTableHeaderClass2");
+        if (h1) h1.textContent = `${rawKeys[0]} log P`;
+        if (h2) h2.textContent = `${rawKeys[1]} log P`;
+      }
       $("nbContribTable").querySelector("tbody").innerHTML = nbGetContribTableRowsHtml(res);
       
       // 渲染后验得分概率柱状图
@@ -4574,16 +4595,40 @@ async function runNbWordProbe(word) {
     } else {
       if (warningContainer) warningContainer.innerHTML = "";
       if (statsContainer) {
-        statsContainer.innerHTML = Object.entries(res.probs).map(([cName, prob]) => {
+        let probItemsHtml = Object.entries(res.probs).map(([cName, prob]) => {
           const logProb = res.log_probs[cName];
+          const icon = nbClassIcon(cName, cName === res.positive_class ? 1 : 0);
           return `
-            <div style="margin-bottom:8px;">
-              <strong>${escapeHtml(cName)}</strong><br>
+            <div style="margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #f1f5f9;">
+              <strong>${icon} ${escapeHtml(cName)}</strong><br>
               条件概率 P(w|c): <span style="color:#2b5c8f; font-weight:bold;">${prob.toExponential(4)}</span><br>
               对数似然 log P(w|c): <span style="color:#e67e22; font-weight:bold;">${logProb.toFixed(4)}</span>
             </div>
           `;
         }).join("");
+
+        // 判别特征部分
+        const delta = res.discriminative_score;
+        const deltaFormatted = delta > 0 ? `+${delta.toFixed(4)}` : delta.toFixed(4);
+        const supportName = res.supported_class;
+        const isStrong = supportName !== "区分能力较弱";
+        const supportBadgeColor = isStrong ? (supportName === res.positive_class ? "#ffe8cc; color: #d9480f;" : "#e0f2fe; color: #0369a1;") : "#f1f5f9; color: #475569;";
+        const supportIcon = isStrong ? nbClassIcon(supportName, supportName === res.positive_class ? 1 : 0) : "⚪";
+
+        probItemsHtml += `
+          <div style="margin-top:12px; padding:10px; background:#fafafa; border-radius:6px; border:1px solid #e2e8f0;">
+            <div style="margin-bottom:6px;">
+              <strong>判别分数 Δ(w)：</strong>
+              <span style="font-family:monospace; font-weight:bold; color:${delta >= 0 ? '#2b5c8f' : '#e67e22'};">${deltaFormatted}</span>
+            </div>
+            <div>
+              <strong>该词更支持：</strong>
+              <span style="display:inline-block; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; background:${supportBadgeColor}">${supportIcon} ${escapeHtml(supportName)}</span>
+            </div>
+          </div>
+        `;
+        
+        statsContainer.innerHTML = probItemsHtml;
       }
     }
 
@@ -4834,10 +4879,12 @@ function nbGetContribTableRowsHtml(data) {
     const c1 = item.contributions[keys[0]].toFixed(4);
     const c2 = item.contributions[keys[1]].toFixed(4);
     const diff = item.diff.toFixed(4);
+    const tf = item.tf !== undefined ? item.tf : 1;
+    const valFormatted = item.val !== undefined ? item.val.toFixed(4) : "1.0000";
     return `
       <tr style="border-bottom: 1px solid #f1f3f5;">
         <td style="padding: 6px; font-weight:bold; color:#2b5c8f;">${escapeHtml(item.word)}</td>
-        <td style="padding: 6px;">${item.val}</td>
+        <td style="padding: 6px;">${tf} <span style="color:#64748b; font-size:10px;">(${valFormatted})</span></td>
         <td style="padding: 6px; color:#666;">${c1}</td>
         <td style="padding: 6px; color:#666;">${c2}</td>
         <td style="padding: 6px; text-align:right; font-weight:bold; color:#1e824c;">${diff}</td>
@@ -4953,18 +5000,60 @@ function renderNbPosteriorChart() {
 // 双词云图自适应 HTML-CSS 排列生成器
 // --------------------------------------------------------------------------
 
+function renderNbWordCloudToggle() {
+  // 1. 更新按钮激活状态
+  const btns = document.querySelectorAll("[aria-label='词云模式'] .seg-btn");
+  btns.forEach(btn => {
+    const isProb = btn.textContent.trim() === "类内高概率词";
+    if ((isProb && nbWordCloudMode === "class_probability") || (!isProb && nbWordCloudMode === "discriminative")) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+
+  // 2. 更新说明文案
+  const expDiv = $("nbWordCloudModeExplanation");
+  const footerDiv = $("nbWordCloudFooterNote");
+  if (nbWordCloudMode === "class_probability") {
+    if (expDiv) expDiv.innerHTML = `💡 <strong>类内高概率词云：</strong>类内高概率词表示在该类别中条件概率较高的词，反映该类别中常见的文本特征。`;
+    if (footerDiv) footerDiv.style.display = "none";
+  } else {
+    if (expDiv) expDiv.innerHTML = `💡 <strong>判别特征词云：</strong>判别特征词表示更能区分两个类别的词。Δ(w) 越大，越支持正类；Δ(w) 越小，越支持负类。`;
+    if (footerDiv) {
+      footerDiv.style.display = "block";
+      footerDiv.innerHTML = `ℹ️ 判别特征词按照两个类别的 log 条件概率差排序。相比单纯高频词，它更能反映一个词对分类方向的影响。`;
+    }
+  }
+
+  // 3. 重新渲染词云
+  renderNbWordClouds();
+}
+
 function renderNbWordClouds() {
   if (!nbTrainData) return;
   const targetNames = nbTrainData.target_names;
+  const negClass = nbTrainData.negative_class;
+  const posClass = nbTrainData.positive_class;
   
-  $("nbCloudTitle1").textContent = `新闻版块：${targetNames[0]}`;
-  $("nbCloudTitle2").textContent = `新闻版块：${targetNames[1]}`;
-  
-  generateHtmlWordCloud("nbWordCloud1", nbTrainData.top_words_per_class[targetNames[0]]);
-  generateHtmlWordCloud("nbWordCloud2", nbTrainData.top_words_per_class[targetNames[1]]);
+  if (nbWordCloudMode === "class_probability") {
+    $("nbCloudTitle1").innerHTML = `📢 类别内高概率特征词：${nbClassIcon(negClass, 0)} ${escapeHtml(negClass)}`;
+    $("nbCloudTitle2").innerHTML = `📢 类别内高概率特征词：${nbClassIcon(posClass, 1)} ${escapeHtml(posClass)}`;
+    
+    const cloudData = nbTrainData.word_cloud_modes.class_probability;
+    generateHtmlWordCloud("nbWordCloud1", cloudData[negClass], false, false);
+    generateHtmlWordCloud("nbWordCloud2", cloudData[posClass], false, true);
+  } else {
+    $("nbCloudTitle1").innerHTML = `⚖️ 判别特征词：更倾向支持 ${nbClassIcon(negClass, 0)} ${escapeHtml(negClass)}`;
+    $("nbCloudTitle2").innerHTML = `⚖️ 判别特征词：更倾向支持 ${nbClassIcon(posClass, 1)} ${escapeHtml(posClass)}`;
+    
+    const cloudData = nbTrainData.word_cloud_modes.discriminative;
+    generateHtmlWordCloud("nbWordCloud1", cloudData[negClass], true, false);
+    generateHtmlWordCloud("nbWordCloud2", cloudData[posClass], true, true);
+  }
 }
 
-function generateHtmlWordCloud(containerId, words) {
+function generateHtmlWordCloud(containerId, words, isDiscriminative = false, isPositive = false) {
   const container = $(containerId);
   if (!container) return;
   container.innerHTML = "";
@@ -4978,8 +5067,18 @@ function generateHtmlWordCloud(containerId, words) {
   const shuffled = [...words].sort(() => Math.random() - 0.5);
   
   // 品牌色调和谐色彩调色板 (蓝色、蓝灰色、中性偏暗高雅色系)
-  const colors = ["#2b5c8f", "#4a90e2", "#1b3a5b", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#2980b9", "#2c3e50", "#7f8c8d"];
+  const negColors = ["#1c7ed6", "#228be6", "#15aabf", "#0c8599", "#1098ad", "#1971c2", "#1864ab", "#087f5b", "#2b5c8f"];
+  const posColors = ["#f76707", "#e8590c", "#d9480f", "#f08c00", "#e65f00", "#e8590c", "#c92a2a", "#b22222", "#d9480f"];
+  const defaultColors = ["#2b5c8f", "#4a90e2", "#1b3a5b", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#2980b9", "#2c3e50"];
   
+  let colors = defaultColors;
+  if (isDiscriminative) {
+    colors = isPositive ? posColors : negColors;
+  } else {
+    // 类别内高概率模式，左边用蓝绿色，右边用橙红色
+    colors = isPositive ? posColors : negColors;
+  }
+
   shuffled.forEach(w => {
     const el = document.createElement("span");
     el.textContent = w.word;
@@ -4996,11 +5095,35 @@ function generateHtmlWordCloud(containerId, words) {
     el.style.margin = "2px";
     el.style.lineHeight = "1";
     
+    // 决定 tooltip 内容
+    let tooltip = "";
+    if (isDiscriminative) {
+      const negClass = nbTrainData.negative_class;
+      const posClass = nbTrainData.positive_class;
+      tooltip = `单词：${w.word}
+支持类别：${w.support_class === posClass ? posClass : negClass}
+Δ(w)：${w.delta > 0 ? '+' : ''}${w.delta.toFixed(4)}
+P(w|${negClass})：${w.prob_negative.toExponential(4)}
+P(w|${posClass})：${w.prob_positive.toExponential(4)}
+log P(w|${negClass})：${w.log_prob_negative.toFixed(4)}
+log P(w|${posClass})：${w.log_prob_positive.toFixed(4)}`;
+    } else {
+      tooltip = `单词：${w.word}
+条件概率 P(w|class)：${w.prob.toExponential(4)}
+对数似然 log P(w|class)：${w.log_prob.toFixed(4)}`;
+    }
+    el.setAttribute("title", tooltip);
+    
     // 鼠标悬停动画微交互
     el.addEventListener("mouseenter", () => {
       el.style.transform = "scale(1.2) translateY(-2px)";
-      el.style.textShadow = "0 3px 6px rgba(43,92,143,0.25)";
-      el.style.background = "#eef4fa";
+      el.style.textShadow = "0 3px 6px rgba(0,0,0,0.15)";
+      el.style.background = "#f1f5f9";
+      
+      // 高亮匹配：如果探针中输入的词和这个词一致，则特别高亮
+      if ($("nbWordProbeInput") && $("nbWordProbeInput").value.trim() === w.word) {
+        el.style.background = "#ffe3e3";
+      }
     });
     el.addEventListener("mouseleave", () => {
       el.style.transform = "scale(1) translateY(0)";
@@ -5015,7 +5138,21 @@ function generateHtmlWordCloud(containerId, words) {
         inp.value = w.word;
         runNbWordProbe(w.word);
       }
+      
+      // 高亮本词 (其他词取消高亮)
+      container.querySelectorAll("span").forEach(span => {
+        span.style.border = "none";
+        span.style.background = "transparent";
+      });
+      el.style.border = "1px solid #1e88e5";
+      el.style.background = "#e8f4fd";
     });
+    
+    // 如果当前就是探针词，初始加上微弱背景
+    if ($("nbWordProbeInput") && $("nbWordProbeInput").value.trim() === w.word) {
+      el.style.border = "1px solid #1e88e5";
+      el.style.background = "#e8f4fd";
+    }
     
     container.appendChild(el);
   });

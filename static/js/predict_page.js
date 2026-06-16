@@ -1302,7 +1302,7 @@ async function renderNbPredictShell() {
         font-size: 13px;
       }
       .nb-table th, .nb-table td {
-        padding: 12px 14px;
+        padding: 8px 10px;
         border-bottom: 1px solid #f1f5f9;
         transition: background-color 0.2s ease;
       }
@@ -1448,6 +1448,29 @@ async function renderNbPredictShell() {
         color: #f59e0b;
         font-weight: 700;
       }
+      .nb-token-positive {
+        background: rgba(37, 99, 235, 0.14);
+        border-bottom: 2px solid rgba(37, 99, 235, 0.45);
+      }
+      .nb-token-negative {
+        background: rgba(16, 185, 129, 0.14);
+        border-bottom: 2px solid rgba(16, 185, 129, 0.45);
+      }
+      .nb-token-oov {
+        color: #64748b;
+        border-bottom: 1px dashed #94a3b8;
+        cursor: help;
+      }
+      .nb-token-removed {
+        text-decoration: line-through !important;
+        opacity: 0.55 !important;
+        background: rgba(239, 68, 68, 0.12) !important;
+        border-bottom: 2px solid rgba(239, 68, 68, 0.45) !important;
+      }
+      .nb-tooltip-trigger {
+        cursor: help;
+        transition: outline 0.1s ease;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1492,6 +1515,25 @@ async function renderNbPredictShell() {
   
   $("main").innerHTML = `
     <div class="nb-predict-container">
+      <div class="nb-predict-card">
+        <h3>待预测文本原文 (Original Text)</h3>
+        <h4 id="nbPredictTextSubtitle">展示输入文本的分词与对数拉力高亮，悬浮可查看各词详细条件概率</h4>
+        <div id="nbPredictStatusMsg" style="margin-bottom:10px; padding:8px 12px; border-radius:6px; font-size:12px; line-height:1.4; display:none;"></div>
+        <div id="nbPredictTextContent" style="font-size: 13px; line-height: 1.8; color: #334155; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></div>
+      </div>
+      <div class="nb-predict-card" id="nbPredictComparisonCard">
+        <h3>移除关键词后重算 (Recalculate after Removal)</h3>
+        <h4 style="margin-bottom:8px;">对比原始预测与临时移除指定词项后的预测结果，观察关键词对分类边界的贡献。</h4>
+        <div id="nbPredictComparisonContent">
+          <div class="empty-state" style="padding: 24px; text-align: center; color: #64748b; font-size: 13px;">
+            <span style="font-size: 24px; display: block; margin-bottom: 8px;">💡</span>
+            <strong>点击下方特征词的“移除后重算”按钮</strong>，可观察单个关键词被移除后，模型分类预测与概率得分的变化，从而直观感受词项贡献的累加特性。
+            <div style="font-size: 12px; color: #94a3b8; margin-top: 12px; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.5; font-weight: normal;">
+              教案提示：朴素贝叶斯在 log 空间中累加每个有效词的条件概率。移除某个关键词后，该词对应的 log 概率贡献会从各类别 score 中消失，因此后验概率可能发生变化。
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="nb-predict-card wide">
         <h3>拔河决策天平 (Tug-of-War Decision Scale)</h3>
         <h4 id="nbTugOfWarSubtitle">展示先验对数胜率与特征词对数似然对决策天平的拉力偏转</h4>
@@ -1554,9 +1596,11 @@ async function renderNbPredictShell() {
 
 function nbPredictDefaultGridLayout(view) {
   return ({
-    nb_predict_scale: { x: 0, y: 0, w: 4, h: 2 },
-    nb_predict_words: { x: 0, y: 2, w: 2, h: 2 },
-    nb_predict_math: { x: 2, y: 2, w: 2, h: 2 },
+    nb_predict_text: { x: 0, y: 0, w: 4, h: 1 },
+    nb_predict_comparison: { x: 0, y: 1, w: 4, h: 2 },
+    nb_predict_scale: { x: 0, y: 3, w: 4, h: 2 },
+    nb_predict_words: { x: 0, y: 5, w: 2, h: 2 },
+    nb_predict_math: { x: 2, y: 5, w: 2, h: 2 },
   })[view] || { x: 0, y: 0, w: 2, h: 2 };
 }
 
@@ -1571,6 +1615,12 @@ function normalizeNbPredictGridLayout(view, layout = {}) {
   clean.w = Math.max(1, Math.min(4, clean.w));
   clean.h = Math.max(1, clean.h);
   if (view === "nb_predict_scale") {
+    clean.h = 2;
+  }
+  if (view === "nb_predict_text") {
+    clean.h = 1;
+  }
+  if (view === "nb_predict_comparison") {
     clean.h = 2;
   }
   clean.x = Math.max(0, Math.min(4 - clean.w, clean.x));
@@ -1592,7 +1642,7 @@ function applyNbPredictCardGrid() {
   const cards = Array.from(container.querySelectorAll(".nb-predict-card"));
   if (!cards.length) return;
 
-  const viewIds = ["nb_predict_scale", "nb_predict_words", "nb_predict_math"];
+  const viewIds = ["nb_predict_text", "nb_predict_comparison", "nb_predict_scale", "nb_predict_words", "nb_predict_math"];
   const saved = loadNbPredictGridLayout();
   const grid = document.createElement("div");
   grid.id = "nbPredictPageWrap";
@@ -1848,6 +1898,9 @@ async function nbPredictLoadPrediction(text) {
     }
     
     nbPredictData = res;
+    if (typeof resetNbPredictComparisonCard === "function") {
+      resetNbPredictComparisonCard();
+    }
     updateNbPredStats();
     renderNbPredictDashboard();
   } catch (err) {
@@ -1859,6 +1912,7 @@ function renderNbPredictDashboard() {
   const data = nbPredictData;
   if (!data) return;
   
+  renderNbPredictText(data);
   renderNbTugOfWar(data);
   renderNbWordBreakdown(data);
   renderNbMathDerivation(data);
@@ -2003,7 +2057,6 @@ function bindWeightsHoverEvents(container) {
       const tr = document.querySelector(`.nb-table tbody tr[data-word="${CSS.escape(word)}"]`);
       if (tr) {
         tr.classList.add("nb-row-active");
-        tr.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
     });
     b.addEventListener("mouseleave", () => {
@@ -2018,90 +2071,149 @@ function renderNbWordBreakdown(data) {
   const slot = $("nbWordBreakdown");
   if (!slot) return;
   
+  // Set default tab if not set
+  if (!window.activePredictTab) {
+    window.activePredictTab = "valid";
+  }
+  
   const { c1_name, c2_name } = getNbPredictionPair(data);
+  const validCount = data.top_words?.length || 0;
+  const oovCount = data.oov_words?.length || 0;
+  const filteredCount = data.filtered_words?.length || 0;
   
-  let rowsHtml = "";
+  let tabContentHtml = "";
   
-  if (data.top_words.length === 0 && (!data.oov_words || data.oov_words.length === 0)) {
-    rowsHtml = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; font-style:italic; padding:20px 0;">清洗分词后未匹配到词典内的任何单词。</td></tr>`;
-  } else {
-    data.top_words.forEach(w => {
-      const p1 = w.probs[c1_name];
-      const p2 = w.probs[c2_name];
-      const logOddsRatio = w.contributions[c1_name] - w.contributions[c2_name];
-      const pullDirClass = logOddsRatio > 0 ? "pull-left" : "pull-right";
-      const absRatio = Math.abs(logOddsRatio);
-      const barWidth = Math.min(100, (absRatio / 6.0) * 100);
+  if (window.activePredictTab === "valid") {
+    if (validCount === 0) {
+      tabContentHtml = `<div style="text-align:center; color:#94a3b8; font-style:italic; padding:20px 0; font-size: 12px;">清洗分词后未匹配到词典内的任何有效词。</div>`;
+    } else {
+      const posClass = nbTrainData.positive_class;
+      const negClass = nbTrainData.negative_class;
+      const posWords = data.support_words_by_class[posClass] || [];
+      const negWords = data.support_words_by_class[negClass] || [];
       
-      rowsHtml += `
-        <tr data-word="${escapeHtml(w.word)}">
-          <td><strong style="color: #0f172a; font-family:monospace;">${escapeHtml(w.word)}</strong></td>
-          <td><span class="nb-badge active">已激活</span></td>
-          <td class="font-mono">${p1.toFixed(5)}</td>
-          <td class="font-mono">${p2.toFixed(5)}</td>
-          <td class="font-mono ${logOddsRatio > 0 ? 'text-green' : 'text-purple'}">${logOddsRatio > 0 ? "+" : ""}${logOddsRatio.toFixed(3)}</td>
-          <td>
-            <div class="nb-pull-bar-container" title="偏转拉力差: ${logOddsRatio.toFixed(4)}">
-              <div class="nb-pull-bar ${pullDirClass}" style="width: ${barWidth}%;"></div>
-            </div>
-          </td>
-        </tr>
+      const tablePos = renderNbWordGroupTable(posWords, `支持 ${posClass} 的关键词 (Δ(w) > 0)`, negClass, posClass);
+      const tableNeg = renderNbWordGroupTable(negWords, `支持 ${negClass} 的关键词 (Δ(w) < 0)`, negClass, posClass);
+      
+      tabContentHtml = `
+        <div style="font-size: 11px; color: #64748b; margin-bottom: 12px; background: #f8fafc; padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; line-height: 1.45;">
+          贡献词分组展示每个有效词更支持哪个类别。Δ(w) 越大，越支持正类；Δ(w) 越小，越支持负类。
+        </div>
+        ${tableNeg}
+        ${tablePos}
       `;
-    });
-    
-    if (Array.isArray(data.oov_words)) {
+    }
+  } else if (window.activePredictTab === "oov") {
+    if (oovCount === 0) {
+      tabContentHtml = `<div style="text-align:center; color:#94a3b8; font-style:italic; padding:20px 0; font-size: 12px;">未检测到词表外词。</div>`;
+    } else {
+      let rowsHtml = "";
       data.oov_words.forEach(w => {
         rowsHtml += `
-          <tr class="oov-row">
-            <td><strong style="color: #94a3b8; font-family:monospace;">${escapeHtml(w)}</strong></td>
-            <td><span class="nb-badge oov">未收录</span></td>
-            <td class="font-mono text-muted" style="color:#94a3b8;">0.00000</td>
-            <td class="font-mono text-muted" style="color:#94a3b8;">0.00000</td>
-            <td class="font-mono text-muted" style="color:#94a3b8;">0.000</td>
-            <td>
-              <div class="nb-pull-bar-container empty">
-                <span style="font-size:10px; color:#94a3b8; font-style:italic;">未在词表中 (被忽略)</span>
-              </div>
-            </td>
+          <tr>
+            <td><strong style="color: #495057; font-family:monospace;">${escapeHtml(w)}</strong></td>
+            <td><span class="nb-badge oov" style="background:#fff4e6; color:#d9480f; border:1px solid #ffd8a8; padding:2px 6px; border-radius:3px; font-size:11px;">词表外</span></td>
+            <td colspan="4" style="color:#868e96; font-style:italic; font-size:11px;">出现在清洗后词表中，但经过 min_df, max_df, max_features 等规则筛选后未进入模型词表</td>
           </tr>
         `;
       });
+      tabContentHtml = `
+        <table class="nb-table">
+          <thead>
+            <tr>
+              <th>单词 (Word)</th>
+              <th>词典状态</th>
+              <th colspan="4">说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
+    }
+  } else if (window.activePredictTab === "filtered") {
+    if (filteredCount === 0) {
+      tabContentHtml = `<div style="text-align:center; color:#94a3b8; font-style:italic; padding:20px 0; font-size: 12px;">未检测到被过滤的词。</div>`;
+    } else {
+      let rowsHtml = "";
+      const reasonMapping = {
+        "stopword": "停用词",
+        "too_short": "长度过短 (单字符)",
+        "number": "数字/特殊字符",
+        "special_character": "特殊符号"
+      };
+      data.filtered_words.forEach(fw => {
+        rowsHtml += `
+          <tr>
+            <td><strong style="color: #868e96; font-family:monospace; text-decoration: line-through;">${escapeHtml(fw.word)}</strong></td>
+            <td><span class="nb-badge filtered" style="background:#f1f3f5; color:#868e96; border:1px solid #dee2e6; padding:2px 6px; border-radius:3px; font-size:11px;">已过滤</span></td>
+            <td colspan="4" style="color:#868e96; font-size:11px;">原因: <strong>${escapeHtml(reasonMapping[fw.reason] || fw.reason)}</strong></td>
+          </tr>
+        `;
+      });
+      tabContentHtml = `
+        <table class="nb-table">
+          <thead>
+            <tr>
+              <th>单词 (Word)</th>
+              <th>词典状态</th>
+              <th colspan="4">原因</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      `;
     }
   }
   
   slot.innerHTML = `
-    <table class="nb-table">
-      <thead>
-        <tr>
-          <th>单词 (Word)</th>
-          <th>词典状态</th>
-          <th>P(w | ${escapeHtml(c1_name)})</th>
-          <th>P(w | ${escapeHtml(c2_name)})</th>
-          <th>对数拉力差</th>
-          <th>偏转拉力条</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml}
-      </tbody>
-    </table>
+    <div style="margin-bottom: 12px;">
+      <p style="font-size:12px; color:#555; margin:0 0 10px 0; line-height:1.45;">
+        💡 只有有效词会参与朴素贝叶斯后验概率计算。词表外词和被过滤词会在预测时被忽略。
+      </p>
+      <div style="display:flex; border-bottom:1px solid #e9ecef; gap:8px;">
+        <button class="tab-btn ${window.activePredictTab === 'valid' ? 'active' : ''}" style="border:none; background:none; padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer; color:${window.activePredictTab === 'valid' ? '#228be6' : '#868e96'}; border-bottom:2px solid ${window.activePredictTab === 'valid' ? '#228be6' : 'transparent'};" onclick="window.setPredictTab('valid')">
+          有效词 (${validCount})
+        </button>
+        <button class="tab-btn ${window.activePredictTab === 'oov' ? 'active' : ''}" style="border:none; background:none; padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer; color:${window.activePredictTab === 'oov' ? '#d9480f' : '#868e96'}; border-bottom:2px solid ${window.activePredictTab === 'oov' ? '#d9480f' : 'transparent'};" onclick="window.setPredictTab('oov')">
+          词表外词 (${oovCount})
+        </button>
+        <button class="tab-btn ${window.activePredictTab === 'filtered' ? 'active' : ''}" style="border:none; background:none; padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer; color:${window.activePredictTab === 'filtered' ? '#495057' : '#868e96'}; border-bottom:2px solid ${window.activePredictTab === 'filtered' ? '#495057' : 'transparent'};" onclick="window.setPredictTab('filtered')">
+          被过滤词 (${filteredCount})
+        </button>
+      </div>
+    </div>
+    <div style="min-height: 180px;">
+      ${tabContentHtml}
+    </div>
   `;
   
+  // Set tab click global helper
+  window.setPredictTab = function(tabName) {
+    window.activePredictTab = tabName;
+    renderNbWordBreakdown(data);
+  };
+  
   // 绑定表格行与天平重物块的悬浮高亮联动
-  const trs = slot.querySelectorAll("tbody tr[data-word]");
-  trs.forEach(tr => {
-    const word = tr.dataset.word;
-    tr.addEventListener("mouseenter", () => {
-      tr.classList.add("nb-row-active");
-      const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(word)}"]`);
-      blocks.forEach(b => b.classList.add("nb-weight-highlight"));
+  if (window.activePredictTab === "valid") {
+    const trs = slot.querySelectorAll("tbody tr[data-word]");
+    trs.forEach(tr => {
+      const word = tr.dataset.word;
+      tr.addEventListener("mouseenter", () => {
+        tr.classList.add("nb-row-active");
+        const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(word)}"]`);
+        blocks.forEach(b => b.classList.add("nb-weight-highlight"));
+      });
+      tr.addEventListener("mouseleave", () => {
+        tr.classList.remove("nb-row-active");
+        const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(word)}"]`);
+        blocks.forEach(b => b.classList.remove("nb-weight-highlight"));
+      });
     });
-    tr.addEventListener("mouseleave", () => {
-      tr.classList.remove("nb-row-active");
-      const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(word)}"]`);
-      blocks.forEach(b => b.classList.remove("nb-weight-highlight"));
-    });
-  });
+  }
 }
 
 function renderNbMathDerivation(data) {
@@ -2359,4 +2471,317 @@ function updateNbPredStats() {
       codeEl.textContent = spec.code;
     }
   }
+}
+
+function renderNbPredictText(data, removed_word = null) {
+  const statusMsgEl = $("nbPredictStatusMsg");
+  if (statusMsgEl) {
+    const x = data.valid_words ? data.valid_words.length : 0;
+    const y = data.oov_words ? data.oov_words.length : 0;
+    statusMsgEl.style.display = "block";
+    if (x === 0) {
+      statusMsgEl.style.background = "#fff9db";
+      statusMsgEl.style.border = "1px solid #ffe066";
+      statusMsgEl.style.color = "#f59f00";
+      statusMsgEl.innerHTML = "⚠️ 当前输入文本中没有词进入模型词表，模型无法根据文本内容形成有效判断。";
+    } else {
+      statusMsgEl.style.background = "#e6fcf5";
+      statusMsgEl.style.border = "1px solid #c3fae8";
+      statusMsgEl.style.color = "#099268";
+      statusMsgEl.innerHTML = `✓ 预测完成。模型使用 <strong>${x}</strong> 个有效词进行计算，忽略 <strong>${y}</strong> 个词表外词。`;
+    }
+  }
+
+  const textContentEl = $("nbPredictTextContent");
+  if (textContentEl && data.full_text) {
+    const raw_text = data.full_text;
+    const highlighted_tokens = data.highlighted_tokens || [];
+    const positiveClass = nbTrainData.positive_class;
+    
+    highlighted_tokens.sort((a, b) => a.start - b.start);
+    
+    let lastIdx = 0;
+    let html = "";
+    for (let item of highlighted_tokens) {
+      if (item.start > lastIdx) {
+        html += escapeHtml(raw_text.substring(lastIdx, item.start));
+      }
+      const tokenText = raw_text.substring(item.start, item.end);
+      if (item.status === 'valid') {
+        const isRemoved = (removed_word && item.token.toLowerCase() === removed_word.toLowerCase());
+        if (isRemoved) {
+          const tooltip = `单词：${item.token}\n状态：已临时移除并重新计算\n（移除该词后重新计算了模型分类结果）`;
+          html += `<span class="nb-token-removed nb-tooltip-trigger" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+        } else {
+          const isPos = item.support_class === positiveClass;
+          const className = isPos ? 'nb-token-positive' : 'nb-token-negative';
+          
+          const opacity = Math.min(0.45, 0.10 + (item.abs_delta / 8.0) * 0.35);
+          const borderOpacity = Math.min(0.85, 0.35 + (item.abs_delta / 8.0) * 0.50);
+          const colorStyle = isPos ? 
+            `background: rgba(37, 99, 235, ${opacity}); border-bottom: 2px solid rgba(37, 99, 235, ${borderOpacity});` :
+            `background: rgba(16, 185, 129, ${opacity}); border-bottom: 2px solid rgba(16, 185, 129, ${borderOpacity});`;
+          
+          const tooltip = `单词：${item.token}\n状态：有效词\n支持类别：${item.support_class}\nΔ(w)：${item.delta > 0 ? '+' : ''}${item.delta.toFixed(4)}\nlog P(w|${nbTrainData.negative_class})：${item.log_prob_negative.toFixed(4)}\nlog P(w|${nbTrainData.positive_class})：${item.log_prob_positive.toFixed(4)}`;
+          
+          html += `<span class="${className} nb-tooltip-trigger" style="${colorStyle}" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+        }
+      } else if (item.status === 'oov') {
+        const tooltip = `单词：${item.token}\n状态：词表外词\n说明：该词未进入模型词表，预测时未参与计算。`;
+        html += `<span class="nb-token-oov nb-tooltip-trigger" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+      } else {
+        html += escapeHtml(tokenText);
+      }
+      lastIdx = item.end;
+    }
+    if (lastIdx < raw_text.length) {
+      html += escapeHtml(raw_text.substring(lastIdx));
+    }
+    textContentEl.innerHTML = html;
+    
+    bindHighlightHoverEvents();
+  }
+}
+
+function bindHighlightHoverEvents() {
+  const triggers = document.querySelectorAll(".nb-tooltip-trigger");
+  triggers.forEach(el => {
+    const word = el.dataset.word;
+    if (!word) return;
+    const normalized = word.toLowerCase();
+    el.addEventListener("mouseenter", () => {
+      el.style.outline = "2px solid #f59e0b";
+      el.style.outlineOffset = "1px";
+      const tr = document.querySelector(`.nb-table tbody tr[data-word="${CSS.escape(normalized)}"]`);
+      if (tr) {
+        tr.classList.add("nb-row-active");
+      }
+      const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(normalized)}"]`);
+      blocks.forEach(b => b.classList.add("nb-weight-highlight"));
+    });
+    el.addEventListener("mouseleave", () => {
+      el.style.outline = "none";
+      const tr = document.querySelector(`.nb-table tbody tr[data-word="${CSS.escape(normalized)}"]`);
+      tr?.classList.remove("nb-row-active");
+      const blocks = document.querySelectorAll(`.nb-weight-block[data-word="${CSS.escape(normalized)}"]`);
+      blocks.forEach(b => b.classList.remove("nb-weight-highlight"));
+    });
+  });
+}
+
+function renderNbWordGroupTable(words, title, negativeClass, positiveClass) {
+  if (!words || words.length === 0) {
+    return `
+      <div style="margin-top: 12px; margin-bottom: 16px;">
+        <h4 style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin: 0 0 6px 0;">${escapeHtml(title)}</h4>
+        <div style="color:#94a3b8; font-style:italic; padding:10px 0; font-size: 11px;">无有效词</div>
+      </div>
+    `;
+  }
+  
+  let rowsHtml = "";
+  words.forEach(w => {
+    const delta = w.delta;
+    const logProbNeg = w.log_prob_negative;
+    const logProbPos = w.log_prob_positive;
+    
+    rowsHtml += `
+      <tr data-word="${escapeHtml(w.word)}">
+        <td><strong style="color: #0f172a; font-family:monospace;">${escapeHtml(w.word)}</strong></td>
+        <td class="font-mono">${w.tf}</td>
+        <td class="font-mono">${w.feature_value.toFixed(4)}</td>
+        <td class="font-mono">${logProbNeg.toFixed(4)}</td>
+        <td class="font-mono">${logProbPos.toFixed(4)}</td>
+        <td class="font-mono ${delta > 0 ? 'text-green' : 'text-purple'}" style="color:${delta > 0 ? '#10b981' : '#8b5cf6'}; font-weight:bold;">${delta > 0 ? "+" : ""}${delta.toFixed(4)}</td>
+        <td>
+          <button class="secondary-btn" style="padding: 2px 6px; font-size: 11px; margin: 0;" onclick="runNbPredictWithoutWord('${escapeHtml(w.word)}')">移除后重算</button>
+        </td>
+      </tr>
+    `;
+  });
+  
+  return `
+    <div style="margin-top: 12px; margin-bottom: 16px;">
+      <h4 style="font-size: 12.5px; font-weight: 700; color: #1e293b; margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${title.includes(positiveClass) ? '#8b5cf6' : '#10b981'};"></span>
+        ${escapeHtml(title)}
+      </h4>
+      <table class="nb-table">
+        <thead>
+          <tr>
+            <th>单词</th>
+            <th>词频</th>
+            <th>特征权重</th>
+            <th title="log P(w|${escapeHtml(negativeClass)})">log P(w|${escapeHtml(negativeClass.split('.').pop())})</th>
+            <th title="log P(w|${escapeHtml(positiveClass)})">log P(w|${escapeHtml(positiveClass.split('.').pop())})</th>
+            <th>Δ(w)</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function runNbPredictWithoutWord(word) {
+  const contentEl = $("nbPredictComparisonContent");
+  if (!contentEl) return;
+
+  // Show loading state
+  contentEl.innerHTML = `
+    <div style="padding: 24px; text-align: center; color: #475569; font-size: 13px;">
+      <span style="font-size: 24px; display: block; margin-bottom: 8px;" class="loading-spinner">⏳</span>
+      正在重新计算，请稍候...
+    </div>
+  `;
+
+  try {
+    const payload = {
+      dataset_id: nbTrainData.dataset_id,
+      removed_word: word
+    };
+    if (nbPredictData && typeof nbPredictData.sample_index === "number") {
+      payload.sample_index = nbPredictData.sample_index;
+    } else {
+      payload.text = (nbPredictData ? nbPredictData.full_text : null) || window.nbPredictCustomText;
+    }
+
+    const res = await runAction("predict_without_word", payload);
+
+    const classes = Object.keys(res.original.posterior_probs);
+    let maxChangeClass = null;
+    let maxChangeVal = -1;
+    classes.forEach(c => {
+      const chg = Math.abs(res.probability_change[c]);
+      if (chg > maxChangeVal) {
+        maxChangeVal = chg;
+        maxChangeClass = c;
+      }
+    });
+
+    let rowsHtml = "";
+    
+    // Prediction class change row
+    rowsHtml += `
+      <tr style="${res.prediction_changed ? 'background-color: rgba(239, 68, 68, 0.04);' : ''}">
+        <td><strong>预测类别</strong></td>
+        <td style="font-family: monospace;">${escapeHtml(res.original.predicted_label)}</td>
+        <td style="font-family: monospace; font-weight: bold; color: ${res.prediction_changed ? '#dc2626' : '#0f172a'};">${escapeHtml(res.after_removal.predicted_label)}</td>
+        <td><span class="nb-badge ${res.prediction_changed ? 'active' : 'oov'}" style="${res.prediction_changed ? 'background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; text-transform: none;' : 'text-transform: none;'}">${res.prediction_changed ? '已改变' : '未改变'}</span></td>
+      </tr>
+    `;
+
+    // Probability rows
+    classes.forEach(c => {
+      const origProb = res.original.posterior_probs[c];
+      const afterProb = res.after_removal.posterior_probs[c];
+      const probChg = res.probability_change[c];
+      const sign = probChg >= 0 ? "+" : "";
+      const isMax = (c === maxChangeClass);
+      
+      rowsHtml += `
+        <tr style="${isMax ? 'background-color: rgba(245, 158, 11, 0.05); font-weight: bold; border-left: 3px solid #f59e0b;' : ''}">
+          <td>P(${escapeHtml(c)} | doc)</td>
+          <td class="font-mono">${(origProb * 100).toFixed(2)}%</td>
+          <td class="font-mono">${(afterProb * 100).toFixed(2)}%</td>
+          <td class="font-mono" style="color: ${probChg > 0 ? '#10b981' : (probChg < 0 ? '#ef4444' : '#64748b')};">${sign}${(probChg * 100).toFixed(2)}% ${isMax ? '🔥 (变化最大)' : ''}</td>
+        </tr>
+      `;
+    });
+
+    // Score rows
+    classes.forEach(c => {
+      const origScore = res.original.raw_scores[c];
+      const afterScore = res.after_removal.raw_scores[c];
+      const scoreChg = res.score_change[c];
+      const sign = scoreChg >= 0 ? "+" : "";
+      
+      rowsHtml += `
+        <tr>
+          <td>score(${escapeHtml(c)})</td>
+          <td class="font-mono">${origScore.toFixed(4)}</td>
+          <td class="font-mono">${afterScore.toFixed(4)}</td>
+          <td class="font-mono" style="color: ${scoreChg > 0 ? '#10b981' : (scoreChg < 0 ? '#ef4444' : '#64748b')};">${sign}${scoreChg.toFixed(4)}</td>
+        </tr>
+      `;
+    });
+
+    let alertHtml = "";
+    if (res.prediction_changed) {
+      alertHtml = `
+        <div style="background: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-weight: bold; font-size: 13px;">
+          ⚠️ 预测类别已改变！由 ${escapeHtml(res.original.predicted_label)} 变为 ${escapeHtml(res.after_removal.predicted_label)}。
+        </div>
+      `;
+    } else {
+      alertHtml = `
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;">
+          ℹ️ 预测类别未发生改变，但后验概率或对数得分有所浮动。
+        </div>
+      `;
+    }
+
+    contentEl.innerHTML = `
+      ${alertHtml}
+      <div class="nb-predict-comparison-info" style="display: flex; gap: 24px; font-size: 13px; color: #475569; margin-bottom: 16px;">
+        <div>移除词：<strong style="color: #0f172a; font-family: monospace; font-size: 14px;">${escapeHtml(res.removed_word)}</strong></div>
+        <div>移除次数：<strong style="color: #0f172a;">${res.removed_count} 次</strong></div>
+        <div>预测是否改变：<strong style="color: ${res.prediction_changed ? '#dc2626' : '#64748b'};">${res.prediction_changed ? '是' : '否'}</strong></div>
+      </div>
+
+      <table class="nb-table" style="width: 100%; font-size: 13px; border-collapse: separate; border-spacing: 0;">
+        <thead>
+          <tr style="background: #f8fafc;">
+            <th style="border-bottom: 2px solid #e2e8f0;">项目</th>
+            <th style="border-bottom: 2px solid #e2e8f0;">原始预测</th>
+            <th style="border-bottom: 2px solid #e2e8f0;">移除后预测</th>
+            <th style="border-bottom: 2px solid #e2e8f0;">变化</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+
+      <div style="font-size: 12px; color: #64748b; margin-top: 12px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+        💡 说明：该操作不会重新训练模型，只是在当前文本中临时移除指定词，并重新计算后验概率。
+      </div>
+    `;
+
+    renderNbPredictText(nbPredictData, word);
+
+    const statusMsgEl = $("nbPredictStatusMsg");
+    if (statusMsgEl) {
+      statusMsgEl.style.display = "block";
+      statusMsgEl.style.background = "#e6fcf5";
+      statusMsgEl.style.border = "1px solid #c3fae8";
+      statusMsgEl.style.color = "#099268";
+      const validCountAfter = res.after_removal.support_words_by_class[nbTrainData.negative_class].length + res.after_removal.support_words_by_class[nbTrainData.positive_class].length;
+      statusMsgEl.innerHTML = `✓ 重新计算完成（已临时移除关键词 <strong>${escapeHtml(word)}</strong>，共 <strong>${res.removed_count}</strong> 处）。当前参与计算的有效词有 <strong>${validCountAfter}</strong> 个。`;
+    }
+
+  } catch (err) {
+    contentEl.innerHTML = `
+      <div style="padding: 16px; background: #fff5f5; border: 1px solid #ffe3e3; color: #e03131; border-radius: 6px; font-size: 12px; line-height: 1.5;">
+        ❌ 重算失败：${escapeHtml(err.message)}
+      </div>
+    `;
+  }
+}
+
+function resetNbPredictComparisonCard() {
+  const contentEl = $("nbPredictComparisonContent");
+  if (!contentEl) return;
+  contentEl.innerHTML = `
+    <div class="empty-state" style="padding: 24px; text-align: center; color: #64748b; font-size: 13px;">
+      <span style="font-size: 24px; display: block; margin-bottom: 8px;">💡</span>
+      <strong>点击下方特征词的“移除后重算”按钮</strong>，可观察单个关键词被移除后，模型分类预测与概率得分的变化，从而直观感受词项贡献的累加特性。
+      <div style="font-size: 12px; color: #94a3b8; margin-top: 12px; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.5; font-weight: normal;">
+        教案提示：朴素贝叶斯在 log 空间中累加每个有效词的条件概率。移除某个关键词后，该词对应的 log 概率贡献会从各类别 score 中消失，因此后验概率可能发生变化。
+      </div>
+    </div>
+  `;
 }

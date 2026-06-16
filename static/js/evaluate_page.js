@@ -744,6 +744,28 @@ async function renderNbEvaluateShell() {
         border-color: #2b5c8f;
         font-weight: 600;
       }
+      .nb-token-positive {
+        background: rgba(37, 99, 235, 0.14);
+        border-bottom: 2px solid rgba(37, 99, 235, 0.45);
+      }
+      .nb-token-negative {
+        background: rgba(16, 185, 129, 0.14);
+        border-bottom: 2px solid rgba(16, 185, 129, 0.45);
+      }
+      .nb-token-oov {
+        color: #64748b;
+        border-bottom: 1px dashed #94a3b8;
+        cursor: help;
+      }
+      .nb-token-removed {
+        text-decoration: line-through !important;
+        opacity: 0.55 !important;
+        background: rgba(239, 68, 68, 0.12) !important;
+        border-bottom: 2px solid rgba(239, 68, 68, 0.45) !important;
+      }
+      .nb-table tbody tr.nb-row-active td {
+        background-color: rgba(245, 158, 11, 0.08);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -766,12 +788,18 @@ async function renderNbEvaluateShell() {
   // 渲染主工作区
   $("main").innerHTML = `
     <div style="padding: 10px 18px 24px 18px; overflow-y: auto; height: 100%; box-sizing: border-box;">
+      <div style="background: #e7f5ff; border: 1px solid #a5d8ff; color: #0b7285; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 12px; line-height: 1.5;">
+        💡 当前评估以二分类为基础。混淆矩阵展示两个类别之间的错分情况，阈值分析展示正类概率变化对预测结果的影响。
+      </div>
       <div class="nb-eval-container">
         
         <!-- 左栏：阈值调节 & 动态混淆矩阵 -->
         <div>
           <div class="nb-eval-card">
             <h3>分类阈值调节沙盒</h3>
+            <p style="margin: 4px 0 10px 0; font-size: 11.5px; color: #4b5563; line-height: 1.45;">
+              当前阈值分析以 <strong style="color: #2b8a3e;">${escapeHtml(labels.posName)}</strong> 作为正类，展示模型在二分类场景下的概率判定变化。
+            </p>
             <h4>拖动滑块改变分类后验概率阈值，观察混淆矩阵及各项指标的实时漂移。</h4>
             
             <div class="nb-slider-container">
@@ -805,23 +833,36 @@ async function renderNbEvaluateShell() {
               <div class="nb-metric-card"><strong id="nbEvalF1">--</strong><span>F1 值 (F1-score)</span></div>
             </div>
             
-            <h3>动态混淆矩阵 (分类测试集)</h3>
-            <div class="nb-cm-grid">
-              <div class="nb-cm-cell correct">
-                <div class="nb-cm-cell-val" id="nbCellTN">--</div>
-                <div class="nb-cm-cell-lbl">真阴性 TN (${labels.negIcon} ${escapeHtml(labels.negName)} 猜对)</div>
+            <h3 style="margin-top: 16px;">动态混淆矩阵 (分类测试集)</h3>
+            <div class="nb-confusion-table-container" style="margin-top:10px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #dee2e6;">
+                <thead>
+                  <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                    <th style="padding: 10px; border: 1px solid #dee2e6; font-weight: 600;">真实类别 \ 预测</th>
+                    <th style="padding: 10px; border: 1px solid #dee2e6; font-weight: 600; color: #495057;">预测 ${escapeHtml(labels.negName)}</th>
+                    <th style="padding: 10px; border: 1px solid #dee2e6; font-weight: 600; color: #2b5c8f;">预测 ${escapeHtml(labels.posName)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 10px; border: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; text-align: left;">${escapeHtml(labels.negName)}</td>
+                    <td style="padding: 12px; border: 1px solid #dee2e6; background: #f4faf5; color: #155724; font-weight: bold; font-size: 16px;" id="nbCellTN">--</td>
+                    <td style="padding: 12px; border: 1px solid #dee2e6; background: #fff9f4; color: #d9534f; font-weight: bold; font-size: 16px;" id="nbCellFP">--</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 10px; border: 1px solid #dee2e6; background: #f8f9fa; font-weight: 600; text-align: left;">${escapeHtml(labels.posName)}</td>
+                    <td style="padding: 12px; border: 1px solid #dee2e6; background: #fff9f4; color: #d9534f; font-weight: bold; font-size: 16px;" id="nbCellFN">--</td>
+                    <td style="padding: 12px; border: 1px solid #dee2e6; background: #f4faf5; color: #155724; font-weight: bold; font-size: 16px;" id="nbCellTP">--</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style="display: flex; gap: 12px; font-size: 10.5px; color: #868e96; margin-top: 8px; justify-content: center;">
+                <span>• TN = 真阴性 (正确分类为 ${escapeHtml(labels.negName)})</span>
+                <span>• TP = 真阳性 (正确分类为 ${escapeHtml(labels.posName)})</span>
               </div>
-              <div class="nb-cm-cell mistake">
-                <div class="nb-cm-cell-val" id="nbCellFP">--</div>
-                <div class="nb-cm-cell-lbl">假阳性 FP (${labels.negIcon} ${escapeHtml(labels.negName)} 误判为 ${escapeHtml(labels.posName)})</div>
-              </div>
-              <div class="nb-cm-cell mistake">
-                <div class="nb-cm-cell-val" id="nbCellFN">--</div>
-                <div class="nb-cm-cell-lbl">假阴性 FN (${labels.posIcon} ${escapeHtml(labels.posName)} 漏报)</div>
-              </div>
-              <div class="nb-cm-cell correct">
-                <div class="nb-cm-cell-val" id="nbCellTP">--</div>
-                <div class="nb-cm-cell-lbl">真阳性 TP (${labels.posIcon} ${escapeHtml(labels.posName)} 猜对)</div>
+              <div style="display: flex; gap: 12px; font-size: 10.5px; color: #868e96; margin-top: 2px; justify-content: center;">
+                <span>• FP = 假阳性 (误判为 ${escapeHtml(labels.posName)})</span>
+                <span>• FN = 假阴性 (漏报 ${escapeHtml(labels.posName)})</span>
               </div>
             </div>
             
@@ -851,6 +892,18 @@ async function renderNbEvaluateShell() {
               <!-- AUC 统计 -->
             </div>
           </section>
+        </div>
+
+        <!-- 下方全宽：错分样本分析 -->
+        <div class="nb-eval-card" style="grid-column: 1 / -1; margin-top: 16px;">
+          <h3>错分样本分析 (Misclassified Samples Analysis)</h3>
+          <h4 style="margin-bottom:8px;">对错分样本页执行“移除后重算”，可以观察某些强判别词是否把文本推向了错误类别。</h4>
+          <div style="background:#f8fafc; border: 1px solid #e2e8f0; padding:12px; border-radius:6px; font-size:12px; line-height:1.5; color:#475569; margin-bottom:12px;" id="nbEvalMisclassifiedNotice">
+            已加载错分样本解释。请观察后验概率和贡献词分组。
+          </div>
+          <div id="nbEvalMisclassifiedList">
+            <!-- 错分样本列表 -->
+          </div>
         </div>
         
       </div>
@@ -884,6 +937,7 @@ async function renderNbEvaluateShell() {
 
   // 首次渲染
   updateNbEvalMetrics();
+  renderNbMisclassifiedSamples();
 }
 
 function updateNbEvalMetrics() {
@@ -896,7 +950,7 @@ function updateNbEvalMetrics() {
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     const true_label = s.true_label;
-    const prob = s.prob;
+    const prob = s.prob_positive;
     const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
     
     if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
@@ -910,10 +964,10 @@ function updateNbEvalMetrics() {
   const recall = (tp + fn > 0) ? (tp / (tp + fn)) : 0.0;
   const f1 = (prec + recall > 0) ? (2 * prec * recall / (prec + recall)) : 0.0;
   
-  $("nbCellTP").textContent = tp + " 篇";
-  $("nbCellFP").textContent = fp + " 篇";
-  $("nbCellTN").textContent = tn + " 篇";
-  $("nbCellFN").textContent = fn + " 篇";
+  $("nbCellTP").textContent = tp;
+  $("nbCellFP").textContent = fp;
+  $("nbCellTN").textContent = tn;
+  $("nbCellFN").textContent = fn;
   
   $("nbEvalAcc").textContent = (acc * 100).toFixed(1) + "%";
   $("nbEvalPrec").textContent = (prec * 100).toFixed(1) + "%";
@@ -959,9 +1013,9 @@ function calculateNbEvalCurves() {
   if (pos.length > 0 && neg.length > 0) {
     for (let i = 0; i < pos.length; i++) {
       for (let j = 0; j < neg.length; j++) {
-        if (pos[i].prob > neg[j].prob) {
+        if (pos[i].prob_positive > neg[j].prob_positive) {
           aucSum += 1.0;
-        } else if (pos[i].prob === neg[j].prob) {
+        } else if (pos[i].prob_positive === neg[j].prob_positive) {
           aucSum += 0.5;
         }
       }
@@ -978,7 +1032,7 @@ function calculateNbEvalCurves() {
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i];
       const true_label = s.true_label;
-      const prob = s.prob;
+      const prob = s.prob_positive;
       const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
       
       if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
@@ -1020,7 +1074,7 @@ function drawNbEvalCurve(onlyUpdateDot = false) {
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     const true_label = s.true_label;
-    const prob = s.prob;
+    const prob = s.prob_positive;
     const pred_label = (prob >= theta) ? labels.posIndex : labels.negIndex;
     
     if (true_label === labels.posIndex && pred_label === labels.posIndex) tp++;
@@ -1041,7 +1095,7 @@ function drawNbEvalCurve(onlyUpdateDot = false) {
     $("nbEvalCurveStats").innerHTML = `ROC 曲线下方面积 (AUC): <span style="color:#d9354f; font-size:14px; font-weight:800;">${nbCachedAuc.toFixed(4)}</span>`;
   } else {
     let apSum = 0;
-    const sorted = [...samples].sort((a,b) => b.prob - a.prob);
+    const sorted = [...samples].sort((a,b) => b.prob_positive - a.prob_positive);
     let correctCount = 0;
     for (let i = 0; i < sorted.length; i++) {
       if (sorted[i].true_label === labels.posIndex) {
@@ -1222,3 +1276,321 @@ roc_auc = auc(fpr_arr, tpr_arr)
     }
   });
 }
+
+function renderNbMisclassifiedSamples() {
+  const listEl = $("nbEvalMisclassifiedList");
+  if (!listEl) return;
+  
+  const samples = nbTrainData.misclassified_samples || [];
+  if (samples.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center; color:#94a3b8; font-style:italic; padding:20px 0; font-size:12px;">太棒了！测试集中没有错分样本。</div>`;
+    return;
+  }
+  
+  let html = `
+    <table class="nb-table" style="width: 100%; font-size: 13px;">
+      <thead>
+        <tr>
+          <th>样本编号</th>
+          <th>真实类别</th>
+          <th>预测类别</th>
+          <th>预测置信度</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  samples.forEach((sample, index) => {
+    const predClass = sample.predicted_label;
+    const confidence = ((sample.posterior_probs[predClass] || 0) * 100).toFixed(1) + "%";
+    
+    html += `
+      <tr style="cursor:pointer;" onclick="toggleMisclassifiedDetail(${index})">
+        <td class="font-mono">#${sample.raw_index}</td>
+        <td><span style="color:#d9354f; font-weight:bold;">${escapeHtml(sample.true_label)}</span></td>
+        <td><span style="color:#2563eb; font-weight:bold;">${escapeHtml(sample.predicted_label)}</span></td>
+        <td class="font-mono">${confidence}</td>
+        <td><button class="secondary-btn" style="padding:4px 8px; font-size:11px;">查看原因</button></td>
+      </tr>
+      <tr id="nbMisclassDetail_${index}" style="display:none; background-color:#fafafa;">
+        <td colspan="5" style="padding: 16px; border-top: none;">
+          <div class="nb-misclass-detail-container" style="display:flex; flex-direction:column; gap:16px;">
+            
+            <!-- 原始文本展示 (带高亮) -->
+            <div>
+              <h4 style="font-size:12.5px; font-weight:bold; color:#1e293b; margin:0 0 6px 0;">原始文本 (具有词表外词及拉力高亮)</h4>
+              <div class="nb-misclass-highlight-text" style="font-size:12.5px; line-height:1.7; color:#334155; padding:12px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; max-height:220px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;">
+                <!-- 高亮分词内容 -->
+              </div>
+            </div>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+              <!-- 后验概率与对数得分拆解 -->
+              <div>
+                <h4 style="font-size:12.5px; font-weight:bold; color:#1e293b; margin:0 0 6px 0;">后验概率与对数得分拆解</h4>
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:10px;">
+                  <div style="font-size:11.5px; line-height:1.6; color:#475569;">
+                    <strong>对数得分计算：</strong><br>
+                    • score(${escapeHtml(nbTrainData.negative_class)}) = log P(${escapeHtml(nbTrainData.negative_class)}) + Σ log P(word | ${escapeHtml(nbTrainData.negative_class)})<br>
+                    &nbsp;&nbsp;= ${sample.prior_scores[nbTrainData.negative_class].toFixed(2)} + (${sample.likelihood_scores[nbTrainData.negative_class].toFixed(2)}) = <strong>${sample.raw_scores[nbTrainData.negative_class].toFixed(4)}</strong><br>
+                    • score(${escapeHtml(nbTrainData.positive_class)}) = log P(${escapeHtml(nbTrainData.positive_class)}) + Σ log P(word | ${escapeHtml(nbTrainData.positive_class)})<br>
+                    &nbsp;&nbsp;= ${sample.prior_scores[nbTrainData.positive_class].toFixed(2)} + (${sample.likelihood_scores[nbTrainData.positive_class].toFixed(2)}) = <strong>${sample.raw_scores[nbTrainData.positive_class].toFixed(4)}</strong><br>
+                    <span style="font-size:10.5px; color:#868e96; display:block; margin-top:4px;">💡 预测类别为对数得分较大的类别，联合对数得分是在对数空间累加先验概率与各词的条件概率所得。</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
+                    <div style="flex:1;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                        <span>${escapeHtml(nbTrainData.negative_class)} (阴性)</span>
+                        <strong>${(sample.posterior_probs[nbTrainData.negative_class]*100).toFixed(1)}%</strong>
+                      </div>
+                      <div style="background:#e9ecef; height:8px; border-radius:4px; overflow:hidden;">
+                        <div style="width:${sample.posterior_probs[nbTrainData.negative_class]*100}%; background:#10b981; height:100%;"></div>
+                      </div>
+                    </div>
+                    <div style="flex:1;">
+                      <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                        <span>${escapeHtml(nbTrainData.positive_class)} (阳性)</span>
+                        <strong>${(sample.posterior_probs[nbTrainData.positive_class]*100).toFixed(1)}%</strong>
+                      </div>
+                      <div style="background:#e9ecef; height:8px; border-radius:4px; overflow:hidden;">
+                        <div style="width:${sample.posterior_probs[nbTrainData.positive_class]*100}%; background:#8b5cf6; height:100%;"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 错误原因推导与特征词拉力 -->
+              <div>
+                <h4 style="font-size:12.5px; font-weight:bold; color:#1e293b; margin:0 0 6px 0;">错误诊断与贡献词分组</h4>
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                  <div style="background:#fff5f5; border:1px solid #ffe3e3; color:#e03131; padding:8px; border-radius:4px; font-size:11.5px; line-height:1.5;">
+                    <strong>诊断分析：</strong> <span class="nb-misclass-error-reason">分析中...</span>
+                  </div>
+                  <div class="nb-misclass-recalc-result" id="nbMisclassRecalc_${index}" style="display:none; padding:8px; border-radius:4px; font-size:11.5px; line-height:1.5; margin-top:8px;">
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:11.5px; margin-top:4px;">
+                    <div>
+                      <strong style="color:#2b8a3e;">支持真实类 (${escapeHtml(sample.true_label)}) 词 (Top 3):</strong>
+                      <div class="nb-misclass-true-words" style="margin-top:4px; display:flex; flex-direction:column; gap:3px;"></div>
+                    </div>
+                    <div>
+                      <strong style="color:#8b5cf6;">支持预测类 (${escapeHtml(sample.predicted_label)}) 词 (Top 3):</strong>
+                      <div class="nb-misclass-pred-words" style="margin-top:4px; display:flex; flex-direction:column; gap:3px;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+  
+  html += `
+      </tbody>
+    </table>
+  `;
+  
+  listEl.innerHTML = html;
+}
+
+window.toggleMisclassifiedDetail = function(index, removed_word = null) {
+  const row = $(`nbMisclassDetail_${index}`);
+  if (!row) return;
+  
+  if (row.style.display === "none" || removed_word) {
+    const samples = nbTrainData.misclassified_samples || [];
+    if (!removed_word) {
+      for (let i = 0; i < samples.length; i++) {
+        const otherRow = $(`nbMisclassDetail_${i}`);
+        if (otherRow && i !== index) otherRow.style.display = "none";
+      }
+    }
+    
+    row.style.display = "table-row";
+    
+    const sample = samples[index];
+    const trueLabel = sample.true_label;
+    const predLabel = sample.predicted_label;
+    
+    const trueWords = sample.support_true_words || [];
+    const predWords = sample.support_pred_words || [];
+    
+    const strongPredWords = predWords.filter(w => w.abs_delta >= 0.8).map(w => w.word);
+    
+    let reasonText = "";
+    
+    const probTrue = sample.posterior_probs[trueLabel] || 0;
+    const probPred = sample.posterior_probs[predLabel] || 0;
+    
+    if (Math.abs(probTrue - probPred) < 0.15) {
+      reasonText = "两个类别后验概率接近，该样本位于模型决策边界附近。";
+    } else if (strongPredWords.length >= 2) {
+      reasonText = `该样本中存在多个更支持预测类别的词（如 ${strongPredWords.slice(0, 3).join("、")}），模型因此将文本推向预测类别。`;
+    } else if (trueWords.length <= 1) {
+      reasonText = "该样本中支持真实类别的有效词较少，模型对真实类别的证据不足。";
+    } else {
+      reasonText = "该样本中存在多个更支持预测类别的词，模型因此将文本推向预测类别。";
+    }
+    
+    const reasonEl = row.querySelector(".nb-misclass-error-reason");
+    if (reasonEl) reasonEl.textContent = reasonText;
+    
+    const trueWordsContainer = row.querySelector(".nb-misclass-true-words");
+    if (trueWordsContainer) {
+      if (trueWords.length === 0) {
+        trueWordsContainer.innerHTML = `<span style="color:#868e96; font-style:italic;">(无)</span>`;
+      } else {
+        trueWordsContainer.innerHTML = trueWords.slice(0, 3).map(w => {
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; font-family:monospace; background:#eafaf4; color:#0f766e; padding:3px 6px; border-radius:3px; margin-bottom:3px; font-size:11px;">
+              <span>${escapeHtml(w.word)} (Δ=${w.delta.toFixed(2)})</span>
+              <button class="secondary-btn" style="padding:1px 4px; font-size:9.5px; margin:0;" onclick="event.stopPropagation(); runNbEvalPredictWithoutWord(${index}, '${escapeHtml(w.word)}')">移除后重算</button>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+    
+    const predWordsContainer = row.querySelector(".nb-misclass-pred-words");
+    if (predWordsContainer) {
+      if (predWords.length === 0) {
+        predWordsContainer.innerHTML = `<span style="color:#868e96; font-style:italic;">(无)</span>`;
+      } else {
+        predWordsContainer.innerHTML = predWords.slice(0, 3).map(w => {
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; font-family:monospace; background:#f5f3ff; color:#6d28d9; padding:3px 6px; border-radius:3px; margin-bottom:3px; font-size:11px;">
+              <span>${escapeHtml(w.word)} (Δ=${w.delta.toFixed(2)})</span>
+              <button class="secondary-btn" style="padding:1px 4px; font-size:9.5px; margin:0;" onclick="event.stopPropagation(); runNbEvalPredictWithoutWord(${index}, '${escapeHtml(w.word)}')">移除后重算</button>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+    
+    const highlightContainer = row.querySelector(".nb-misclass-highlight-text");
+    if (highlightContainer && sample.highlighted_tokens) {
+      const rawText = sample.full_text;
+      const highlightedTokens = sample.highlighted_tokens || [];
+      const positiveClass = nbTrainData.positive_class;
+      
+      highlightedTokens.sort((a, b) => a.start - b.start);
+      
+      let lastIdx = 0;
+      let html = "";
+      for (let item of highlightedTokens) {
+        if (item.start > lastIdx) {
+          html += escapeHtml(rawText.substring(lastIdx, item.start));
+        }
+        const tokenText = rawText.substring(item.start, item.end);
+        if (item.status === 'valid') {
+          const isRemoved = (removed_word && item.token.toLowerCase() === removed_word.toLowerCase());
+          if (isRemoved) {
+            const tooltip = `单词：${item.token}\n状态：已临时移除并重新计算\n（移除该词后重新计算了模型分类结果）`;
+            html += `<span class="nb-token-removed nb-tooltip-trigger" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+          } else {
+            const isPos = item.support_class === positiveClass;
+            const className = isPos ? 'nb-token-positive' : 'nb-token-negative';
+            
+            const opacity = Math.min(0.45, 0.10 + (item.abs_delta / 8.0) * 0.35);
+            const borderOpacity = Math.min(0.85, 0.35 + (item.abs_delta / 8.0) * 0.50);
+            const colorStyle = isPos ? 
+              `background: rgba(37, 99, 235, ${opacity}); border-bottom: 2px solid rgba(37, 99, 235, ${borderOpacity}); cursor: help;` :
+              `background: rgba(16, 185, 129, ${opacity}); border-bottom: 2px solid rgba(16, 185, 129, ${borderOpacity}); cursor: help;`;
+            
+            const tooltip = `单词：${item.token}\n状态：有效词\n支持类别：${item.support_class}\nΔ(w)：${item.delta > 0 ? '+' : ''}${item.delta.toFixed(4)}\nlog P(w|${nbTrainData.negative_class})：${item.log_prob_negative.toFixed(4)}\nlog P(w|${nbTrainData.positive_class})：${item.log_prob_positive.toFixed(4)}`;
+            
+            html += `<span class="${className} nb-tooltip-trigger" style="${colorStyle}" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+          }
+        } else if (item.status === 'oov') {
+          const tooltip = `单词：${item.token}\n状态：词表外词\n说明：该词未进入模型词表，预测时未参与计算。`;
+          html += `<span class="nb-token-oov nb-tooltip-trigger" data-word="${escapeHtml(item.token.toLowerCase())}" title="${escapeHtml(tooltip)}">${escapeHtml(tokenText)}</span>`;
+        } else {
+          html += escapeHtml(tokenText);
+        }
+        lastIdx = item.end;
+      }
+      if (lastIdx < rawText.length) {
+        html += escapeHtml(rawText.substring(lastIdx));
+      }
+      highlightContainer.innerHTML = html;
+    }
+  } else {
+    row.style.display = "none";
+  }
+};
+
+async function runNbEvalPredictWithoutWord(index, word) {
+  const recalcEl = $("nbMisclassRecalc_" + index);
+  if (!recalcEl) return;
+
+  recalcEl.style.display = "block";
+  recalcEl.style.background = "#f1f3f5";
+  recalcEl.style.border = "1px solid #dee2e6";
+  recalcEl.style.color = "#495057";
+  recalcEl.innerHTML = `正在重新预测，请稍候...`;
+
+  try {
+    const sample = nbTrainData.misclassified_samples[index];
+    const payload = {
+      dataset_id: nbTrainData.dataset_id,
+      sample_index: sample.index,
+      removed_word: word
+    };
+
+    const res = await runAction("predict_without_word", payload);
+
+    const originalPred = res.original.predicted_label;
+    const afterPred = res.after_removal.predicted_label;
+    const trueLabel = sample.true_label;
+    const corrected = (afterPred === trueLabel);
+
+    const originalTrueProb = res.original.posterior_probs[trueLabel];
+    const afterTrueProb = res.after_removal.posterior_probs[trueLabel];
+
+    let messageText = "";
+    let alertBg = "";
+    let alertBorder = "";
+    let alertColor = "";
+
+    if (corrected) {
+      messageText = `移除该词后，模型预测回真实类别，说明该词是导致错分的重要误导词。`;
+      alertBg = "#e6fcf5";
+      alertBorder = "1px solid #c3fae8";
+      alertColor = "#099268";
+    } else {
+      messageText = `移除该词后，模型预测结果仍未改变，说明该样本的错误由多个词共同造成。`;
+      alertBg = "#fff5f5";
+      alertBorder = "1px solid #ffe3e3";
+      alertColor = "#e03131";
+    }
+
+    recalcEl.style.background = alertBg;
+    recalcEl.style.border = alertBorder;
+    recalcEl.style.color = alertColor;
+
+    recalcEl.innerHTML = `
+      <div><strong>移除词项重算结果：</strong></div>
+      <div>• 移除词：<strong style="font-family: monospace;">${escapeHtml(res.removed_word)}</strong>（在该文本中出现过 ${res.removed_count} 次）</div>
+      <div>• 类别概率变化：P(${escapeHtml(trueLabel)} | doc) 从 <strong>${(originalTrueProb * 100).toFixed(1)}%</strong> 变动至 <strong>${(afterTrueProb * 100).toFixed(1)}%</strong></div>
+      <div>• 预测决策变化：预测类别由 <strong>${escapeHtml(originalPred)}</strong> 变为 <strong>${escapeHtml(afterPred)}</strong>（真实类别为：<strong>${escapeHtml(trueLabel)}</strong>）</div>
+      <div style="margin-top: 6px; font-weight: bold; border-top: 1px dashed rgba(0,0,0,0.1); padding-top: 6px;">
+        📢 诊断结果：${messageText}
+      </div>
+    `;
+
+    toggleMisclassifiedDetail(index, word);
+
+  } catch (err) {
+    recalcEl.style.background = "#fff5f5";
+    recalcEl.style.border = "1px solid #ffe3e3";
+    recalcEl.style.color = "#e03131";
+    recalcEl.innerHTML = `❌ 重新预测失败：${escapeHtml(err.message)}`;
+  }
+}
+
+window.runNbEvalPredictWithoutWord = runNbEvalPredictWithoutWord;

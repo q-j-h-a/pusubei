@@ -142,6 +142,8 @@ def get_mock_newsgroups(categories, remove_opts):
 def load_dataset(payload: dict) -> dict:
     source = payload.get("source", "twenty_newsgroups")
     categories = payload.get("categories") or ["sci.space", "rec.autos"]
+    if len(categories) != 2:
+        raise ValueError("当前朴素贝叶斯教学实验仅支持两个类别，请选择两个类别。")
     max_samples = payload.get("max_samples")
 
     # 样本数量限制转换
@@ -311,9 +313,9 @@ def clean_and_tokenize(payload: dict) -> dict:
 
         # 匹配分词
         if remove_numbers:
-            tokens = re.findall(r'\b[a-zA-Z]+\b', text)
+            tokens = re.findall(r'\b[a-zA-Z]{2,}\b', text)
         else:
-            tokens = re.findall(r'\b[a-zA-Z0-9]+\b', text)
+            tokens = re.findall(r'\b[a-zA-Z0-9]{2,}\b', text)
 
         # 大小写转换
         if lowercase:
@@ -384,9 +386,9 @@ def clean_and_tokenize(payload: dict) -> dict:
             clean_body = strip_newsgroup_footer(clean_body)
 
         if remove_numbers:
-            tokens_raw = re.findall(r'\b[a-zA-Z]+\b', clean_body)
+            tokens_raw = re.findall(r'\b[a-zA-Z]{2,}\b', clean_body)
         else:
-            tokens_raw = re.findall(r'\b[a-zA-Z0-9]+\b', clean_body)
+            tokens_raw = re.findall(r'\b[a-zA-Z0-9]{2,}\b', clean_body)
         stages["4_tokens_raw"] = tokens_raw
 
         # 英文小写化
@@ -421,6 +423,8 @@ def clean_and_tokenize(payload: dict) -> dict:
     ds["cleaned_tokens_list"] = cleaned_tokens_list
     ds["vocab"] = list(vocab)
     ds["vocab_size"] = vocab_size
+    ds["cleaned_vocab"] = list(vocab)
+    ds["cleaned_vocab_size"] = vocab_size
     ds["avg_raw_words"] = avg_raw_words
     ds["avg_cleaned_words"] = avg_cleaned_words
     ds["top_tokens"] = top_tokens
@@ -437,10 +441,12 @@ def clean_and_tokenize(payload: dict) -> dict:
         "dataset_id": dataset_id,
         "row_count": row_count,
         "vocab_size": vocab_size,
+        "cleaned_vocab_size": vocab_size,
         "avg_raw_words": avg_raw_words,
         "avg_cleaned_words": avg_cleaned_words,
         "compression_ratio": round((1 - total_cleaned_word_count / max(total_raw_word_count, 1)) * 100, 1),
         "top_tokens": top_tokens,
+        "cleaned_top_tokens": top_tokens,
         "preview": preview_items
     }
 
@@ -456,6 +462,7 @@ def clean_and_tokenize(payload: dict) -> dict:
         "context_id": context_id,
         **response
     }
+
 
 
 def vectorize_dataset(payload: dict) -> dict:
@@ -512,9 +519,15 @@ def vectorize_dataset(payload: dict) -> dict:
     X = vectorizer.fit_transform(corpus)
 
     # 缓存结果
+    # 提取特征名
+    feature_names = vectorizer.get_feature_names_out().tolist()
+
+    # 缓存结果
     ds["X"] = X
     ds["vectorizer"] = vectorizer
     ds["vectorizer_type"] = vectorizer_type
+    ds["model_vocab"] = feature_names
+    ds["model_vocab_size"] = len(feature_names)
     ds["vectorize_options"] = {
         "vectorizer_type": vectorizer_type,
         "max_features": max_features,
@@ -530,13 +543,10 @@ def vectorize_dataset(payload: dict) -> dict:
     sparsity = round(100 * (1 - nnz / total_elements), 2) if total_elements > 0 else 0.0
     density = round(100 * (nnz / total_elements), 2) if total_elements > 0 else 0.0
 
-    # 提取特征名
-    feature_names = vectorizer.get_feature_names_out().tolist()
-
     # 1. 计算每个词的全局文档频率 DF (在多少封邮件里出现过)
     dfs = np.bincount(X.indices, minlength=cols).tolist()
 
-    # 2. 截取前 100 样本 x 前 200 特征的子矩阵非零坐标格点，用于稀疏网格散点图
+    # 2. 截取前 100 样本 x 前 200 特征 of 子矩阵非零坐标格点，用于稀疏网格散点图
     sub_rows = min(100, rows)
     sub_cols = min(200, cols)
     X_sub = X[:sub_rows, :sub_cols].tocoo()
@@ -616,6 +626,14 @@ def vectorize_dataset(payload: dict) -> dict:
             "features": preview_features[idx] if idx < len(preview_features) else []
         })
 
+    vectorizer_params = {
+        "vectorizer_type": vectorizer_type,
+        "max_features": max_features if max_features is not None else "无限制",
+        "min_df": min_df,
+        "max_df": float(payload.get("max_df", 1.0)),
+        "ngram_range": [ngram_min, ngram_max]
+    }
+
     response = {
         "dataset_id": dataset_id,
         "rows": rows,
@@ -626,7 +644,11 @@ def vectorize_dataset(payload: dict) -> dict:
         "top_15_features": top_15_features,
         "matrix_sparse_points": matrix_sparse_points,  # 星空稀疏点阵数据
         "sub_feature_names": feature_names[:sub_cols],  # 前200列特征对应的具体单词列表
-        "preview": preview_items
+        "preview": preview_items,
+        "model_vocab_size": len(feature_names),
+        "model_feature_names": feature_names,
+        "vectorizer_params": vectorizer_params,
+        "cleaned_vocab_size": ds.get("cleaned_vocab_size", 0)
     }
 
     # 创建会话上下文
@@ -641,6 +663,7 @@ def vectorize_dataset(payload: dict) -> dict:
         "context_id": context_id,
         **response
     }
+
 
 
 def prepare_data_view(payload: dict) -> dict:
@@ -1021,37 +1044,101 @@ def prepare_train(payload: dict) -> dict:
     # 提取词云图权重
     vectorizer = ds["vectorizer"]
     feature_names = vectorizer.get_feature_names_out().tolist()
-    top_words_per_class = {}
+    
+    negative_idx = 0
+    positive_idx = 1
+    negative_class = target_names[0]
+    positive_class = target_names[1]
 
+    # Mode 1: Class Probability Word Cloud
+    class_prob_data = {negative_class: [], positive_class: []}
     for class_idx, class_name in enumerate(target_names):
         log_probs = clf.feature_log_prob_[class_idx]
         if model_type == "ComplementNB":
-            # 补集贝叶斯权重反转：在补集概率越小，说明在当前类越独特，权重越大
             weights = np.exp(-log_probs)
         else:
-            # 多项式贝叶斯：条件概率
             weights = np.exp(log_probs)
             
-        # 归一化或排序
         sorted_indices = np.argsort(weights)[::-1]
-        
-        top_words = []
         max_w = float(weights[sorted_indices[0]]) if len(sorted_indices) > 0 else 1.0
+        
         for idx in sorted_indices[:50]:
             raw_w = float(weights[idx])
-            # score 范围设定在 12px 到 72px 之间，便于前端直接作为字号使用
             score = 12 + 60 * (raw_w / max_w) if max_w > 0 else 12
-            top_words.append({
+            score = max(12, min(72, score))
+            class_prob_data[class_name].append({
                 "word": feature_names[idx],
-                "weight": raw_w,
-                "score": int(score),
-                "prob": float(np.exp(clf.feature_log_prob_[class_idx][idx]))
+                "prob": float(np.exp(clf.feature_log_prob_[class_idx][idx])),
+                "log_prob": float(clf.feature_log_prob_[class_idx][idx]),
+                "score": int(score)
             })
-        top_words_per_class[class_name] = top_words
+
+    # Mode 2: Discriminative Feature Word Cloud
+    all_deltas = []
+    for word_idx in range(len(feature_names)):
+        d = float(clf.feature_log_prob_[positive_idx, word_idx] - clf.feature_log_prob_[negative_idx, word_idx])
+        all_deltas.append(d)
+        
+    max_abs_delta = max(abs(d) for d in all_deltas) if len(all_deltas) > 0 else 1.0
+    if max_abs_delta == 0:
+        max_abs_delta = 1.0
+        
+    discriminative_pos = []
+    discriminative_neg = []
+    for word_idx, d in enumerate(all_deltas):
+        abs_d = abs(d)
+        score = int(12 + 60 * (abs_d / max_abs_delta))
+        score = max(12, min(72, score))
+        
+        prob_neg = float(np.exp(clf.feature_log_prob_[negative_idx, word_idx]))
+        prob_pos = float(np.exp(clf.feature_log_prob_[positive_idx, word_idx]))
+        log_prob_neg = float(clf.feature_log_prob_[negative_idx, word_idx])
+        log_prob_pos = float(clf.feature_log_prob_[positive_idx, word_idx])
+        
+        item = {
+            "word": feature_names[word_idx],
+            "delta": d,
+            "abs_delta": abs_d,
+            "prob_negative": prob_neg,
+            "prob_positive": prob_pos,
+            "log_prob_negative": log_prob_neg,
+            "log_prob_positive": log_prob_pos,
+            "support_class": positive_class if d > 0 else negative_class,
+            "score": score
+        }
+        if d > 0:
+            discriminative_pos.append(item)
+        else:
+            discriminative_neg.append(item)
+            
+    # Sort positive class by delta descending, negative class by delta ascending
+    discriminative_pos.sort(key=lambda x: x["delta"], reverse=True)
+    discriminative_neg.sort(key=lambda x: x["delta"])
+    
+    word_cloud_modes = {
+        "class_probability": class_prob_data,
+        "discriminative": {
+            negative_class: discriminative_neg[:50],
+            positive_class: discriminative_pos[:50]
+        }
+    }
+
+    # Compatibility with older top_words_per_class
+    top_words_per_class = {}
+    for class_name in target_names:
+        top_words_per_class[class_name] = [
+            {
+                "word": item["word"],
+                "prob": item["prob"],
+                "score": item["score"]
+            }
+            for item in class_prob_data[class_name]
+        ]
 
     # 缓存模型和词云数据
     ds["nb_model"] = clf
     ds["top_words_per_class"] = top_words_per_class
+    ds["word_cloud_modes"] = word_cloud_modes
     ds["model_type"] = model_type
     ds["alpha"] = alpha
 
@@ -1076,14 +1163,31 @@ def prepare_train(payload: dict) -> dict:
     for idx in misclassified_indices[:5]:
         raw_idx = ds["test_idx"][idx]
         raw_text = ds["texts"][raw_idx]
-        # 大致清洗换行，保证前端预览美观
-        clean_text = raw_text.replace("\n", " ").strip()
+        x_sample = X_test[idx]
+        true_class_idx = int(y_test[idx])
+        
+        explanation = explain_sample(ds, x_sample, raw_text, true_class=true_class_idx)
+        
+        body_text = explanation.get("clean_body", raw_text)
+        if not body_text.strip():
+            body_text = raw_text
+        clean_text = body_text.replace("\n", " ").strip()
         text_preview = clean_text[:120] + "..." if len(clean_text) > 120 else clean_text
         misclassified_samples.append({
             "index": int(idx),
-            "true_label": target_names[y_test[idx]],
-            "predicted_label": target_names[y_pred_test[idx]],
-            "preview": text_preview
+            "raw_index": int(raw_idx),
+            "true_label": target_names[true_class_idx],
+            "predicted_label": explanation["predicted_label"],
+            "preview": text_preview,
+            "full_text": raw_text,
+            "posterior_probs": explanation["posterior_probs"],
+            "raw_scores": explanation["raw_scores"],
+            "prior_scores": explanation["prior_scores"],
+            "likelihood_scores": explanation["likelihood_scores"],
+            "support_true_words": explanation["support_words_by_class"].get(target_names[true_class_idx], []),
+            "support_pred_words": explanation["support_words_by_class"].get(explanation["predicted_label"], []),
+            "oov_words": explanation["oov_words"],
+            "highlighted_tokens": explanation["highlighted_tokens"]
         })
 
     # 计算测试集概率，用于模型评估页面在前端调整阈值并绘制 ROC/PR 曲线
@@ -1093,10 +1197,13 @@ def prepare_train(payload: dict) -> dict:
         y_prob_test = [0.5] * len(y_test)
         
     eval_samples = []
-    for y_t, p_val in zip(y_test.tolist(), y_prob_test):
+    for y_t, p_val, y_pred in zip(y_test.tolist(), y_prob_test, y_pred_test.tolist()):
         eval_samples.append({
             "true_label": int(y_t),
-            "prob": float(p_val)
+            "true_class": target_names[int(y_t)],
+            "prob_positive": float(p_val),
+            "predicted_label": int(y_pred),
+            "predicted_class": target_names[int(y_pred)]
         })
 
     response = {
@@ -1114,9 +1221,12 @@ def prepare_train(payload: dict) -> dict:
         "confusion_matrix": confusion_matrix_list,
         "misclassified_samples": misclassified_samples,
         "top_words_per_class": top_words_per_class,
+        "word_cloud_modes": word_cloud_modes,
         "target_names": target_names,
+        "positive_class": positive_class,
+        "negative_class": negative_class,
         "positive_label_index": 1,
-        "positive_label_name": target_names[1] if len(target_names) > 1 else target_names[0],
+        "positive_label_name": positive_class,
         "eval_samples": eval_samples
     }
 
@@ -1130,6 +1240,23 @@ def prepare_train(payload: dict) -> dict:
     
     response["context_id"] = context_id
     return response
+
+
+def infer_oov_reason(raw_word, normalized_word, ds, vectorizer):
+    if not raw_word or not normalized_word:
+        return "empty", "请输入需要查询的单词。"
+    if normalized_word in ENGLISH_STOP_WORDS:
+        return "stopword", "该词属于停用词，已在预处理阶段被过滤，模型推理时会忽略该词。"
+    if len(normalized_word) < 2:
+        return "too_short", "该词长度过短，已被 token 规则过滤，模型推理时会忽略该词。"
+    cleaned_vocab = set(ds.get("cleaned_vocab", []))
+    model_vocab = set(ds.get("model_vocab", []))
+    if normalized_word not in model_vocab:
+        if normalized_word in cleaned_vocab:
+            return "filtered_by_vectorizer", "该词出现在清洗后词表中，但经过 min_df、max_df 或 max_features 筛选后未进入模型词表。模型推理时会忽略该词。"
+        else:
+            return "not_seen_in_training", "该词未出现在训练语料的清洗后词表中，模型无法为它计算条件概率。"
+    return "unknown", "该词未进入模型词表，模型推理时会忽略该词。"
 
 
 def get_word_prob(payload: dict) -> dict:
@@ -1146,21 +1273,30 @@ def get_word_prob(payload: dict) -> dict:
     target_names = ds["target_names"]
     
     raw_word = payload.get("word", "").strip()
-    word = raw_word.lower()
+    normalized_word = raw_word.lower()
     
     vocab = vectorizer.vocabulary_
     
     # OOV 防护与停用词防护
-    if not word or word not in vocab:
+    if not normalized_word or normalized_word not in vocab:
+        oov_reason, message = infer_oov_reason(raw_word, normalized_word, ds, vectorizer)
         return {
             "word": raw_word,
+            "normalized_word": normalized_word,
+            "in_vocabulary": False,
             "is_unseen": True,
-            "probs": {name: 0.0 for name in target_names},
-            "log_probs": {name: -99.0 for name in target_names},
-            "model_log_probs": {name: -99.0 for name in target_names}
+            "oov_reason": oov_reason,
+            "message": message,
+            "probs": {},
+            "log_probs": {},
+            "model_log_probs": {},
+            "discriminative_score": 0.0,
+            "supported_class": "无",
+            "negative_class": target_names[0],
+            "positive_class": target_names[1] if len(target_names) > 1 else target_names[0],
         }
         
-    idx = vocab[word]
+    idx = vocab[normalized_word]
     probs = {}
     log_probs = {}
     model_log_probs = {}
@@ -1180,12 +1316,367 @@ def get_word_prob(payload: dict) -> dict:
         # 模型的参数
         model_log_probs[name] = float(clf.feature_log_prob_[class_idx, idx])
         
+    negative_class = target_names[0]
+    positive_class = target_names[1]
+    delta = log_probs[positive_class] - log_probs[negative_class]
+    
+    if abs(delta) < 0.1:
+        supported_class = "区分能力较弱"
+    elif delta > 0:
+        supported_class = positive_class
+    else:
+        supported_class = negative_class
+        
     return {
         "word": raw_word,
+        "normalized_word": normalized_word,
+        "in_vocabulary": True,
         "is_unseen": False,
+        "oov_reason": None,
+        "message": "该词已进入模型词表，可参与朴素贝叶斯分类计算。",
         "probs": probs,
         "log_probs": log_probs,
-        "model_log_probs": model_log_probs
+        "model_log_probs": model_log_probs,
+        "discriminative_score": delta,
+        "supported_class": supported_class,
+        "negative_class": negative_class,
+        "positive_class": positive_class
+    }
+
+
+def analyze_words_in_text(raw_text, ds):
+    import re
+    from sklearn.datasets._twenty_newsgroups import (
+        strip_newsgroup_header,
+        strip_newsgroup_footer,
+        strip_newsgroup_quoting
+    )
+    
+    opts = ds.get("tokenization_options", {})
+    remove_headers = opts.get("remove_headers", True)
+    remove_quotes = opts.get("remove_quotes", True)
+    remove_footers = opts.get("remove_footers", True)
+    remove_numbers = opts.get("remove_numbers", True)
+    lowercase = opts.get("lowercase", True)
+    remove_stopwords = opts.get("remove_stopwords", True)
+    
+    def _safe_strip_text(value, strip_func):
+        stripped = strip_func(value)
+        return stripped if stripped.strip() else value
+
+    text = raw_text
+    if remove_headers:
+        text = _safe_strip_text(text, strip_newsgroup_header)
+    if remove_quotes:
+        text = _safe_strip_text(text, strip_newsgroup_quoting)
+    if remove_footers:
+        text = _safe_strip_text(text, strip_newsgroup_footer)
+        
+    # We find all alphanumeric tokens
+    raw_tokens = re.findall(r'\b\w+\b', text)
+    
+    valid_words = set()
+    oov_words = set()
+    filtered_words = []
+    
+    vectorizer = ds.get("vectorizer")
+    model_vocab = set(ds.get("model_vocab", []))
+    if vectorizer and hasattr(vectorizer, "vocabulary_"):
+        model_vocab = set(vectorizer.vocabulary_.keys())
+        
+    cleaned_vocab = set(ds.get("cleaned_vocab", []))
+    
+    processed_words = set()
+    
+    for token in raw_tokens:
+        if not token:
+            continue
+        orig_token = token
+        norm_token = token.lower() if lowercase else token
+        
+        if orig_token in processed_words:
+            continue
+        processed_words.add(orig_token)
+        
+        # 1. Check if it is filtered as a number
+        if remove_numbers:
+            if not orig_token.isalpha():
+                filtered_words.append({"word": orig_token, "reason": "number"})
+                continue
+        else:
+            if not orig_token.isalnum():
+                filtered_words.append({"word": orig_token, "reason": "special_character"})
+                continue
+                
+        # 2. Check if too short
+        if len(norm_token) < 2:
+            filtered_words.append({"word": orig_token, "reason": "too_short"})
+            continue
+            
+        # 3. Check if stopword
+        if remove_stopwords and norm_token.lower() in ENGLISH_STOP_WORDS:
+            filtered_words.append({"word": orig_token, "reason": "stopword"})
+            continue
+            
+        # 4. It is a cleaned word. Now check if it's in the model vocab.
+        if norm_token.lower() in model_vocab:
+            valid_words.add(norm_token.lower())
+        else:
+            oov_words.add(norm_token.lower())
+            
+    return list(valid_words), list(oov_words), filtered_words
+
+
+def explain_sample(ds, x_sample, raw_text, true_class=None):
+    clf = ds["nb_model"]
+    vectorizer = ds["vectorizer"]
+    target_names = ds["target_names"]
+    model_type = ds["model_type"]
+    vecOptions = ds.get("vectorize_options", {})
+    opts = ds.get("tokenization_options", {})
+    
+    import numpy as np
+    import re
+    from collections import Counter
+    
+    # Get true_label as string
+    true_label = None
+    if true_class is not None:
+        if isinstance(true_class, int):
+            true_label = target_names[true_class]
+        else:
+            true_label = str(true_class)
+            
+    # Algorithm prediction
+    pred_class = int(clf.predict(x_sample)[0])
+    predicted_label = target_names[pred_class]
+    
+    # Get joint log likelihood
+    if hasattr(clf, "_joint_log_likelihood"):
+        jll = clf._joint_log_likelihood(x_sample)[0]
+    else:
+        if model_type == "MultinomialNB":
+            jll = (x_sample * clf.feature_log_prob_.T).toarray()[0] + clf.class_log_prior_
+        else:
+            jll = -(x_sample * clf.feature_log_prob_.T).toarray()[0]
+            
+    prior_scores = {}
+    likelihood_scores = {}
+    raw_scores = {}
+    total_samples = float(np.sum(clf.class_count_))
+    
+    for class_idx, name in enumerate(target_names):
+        log_prior = float(np.log(clf.class_count_[class_idx] / total_samples))
+        prior_scores[name] = log_prior
+        
+        if model_type == "MultinomialNB":
+            log_like = float(x_sample.dot(clf.feature_log_prob_[class_idx])[0])
+        else:
+            log_like = float(-x_sample.dot(clf.feature_log_prob_[class_idx])[0])
+            
+        likelihood_scores[name] = log_like
+        raw_scores[name] = float(jll[class_idx])
+        
+    cleaned_scores = []
+    for name in target_names:
+        s = raw_scores[name]
+        if np.isnan(s) or np.isneginf(s):
+            cleaned_scores.append(-9999.0)
+        else:
+            cleaned_scores.append(s)
+            
+    max_score = max(cleaned_scores)
+    exp_scores = [np.exp(s - max_score) for s in cleaned_scores]
+    sum_exp = sum(exp_scores)
+    
+    posterior_probs = {}
+    for class_idx, name in enumerate(target_names):
+        posterior_probs[name] = float(exp_scores[class_idx] / sum_exp) if sum_exp > 0 else 1.0 / len(target_names)
+        
+    # Analyze word breakdown
+    valid_words, oov_words_list, filtered_words = analyze_words_in_text(raw_text, ds)
+    
+    # Count frequency of each word in preprocessed text
+    remove_headers = opts.get("remove_headers", True)
+    remove_quotes = opts.get("remove_quotes", True)
+    remove_footers = opts.get("remove_footers", True)
+    remove_numbers = opts.get("remove_numbers", True)
+    lowercase = opts.get("lowercase", True)
+    remove_stopwords = opts.get("remove_stopwords", True)
+    
+    from sklearn.datasets._twenty_newsgroups import (
+        strip_newsgroup_header,
+        strip_newsgroup_footer,
+        strip_newsgroup_quoting
+    )
+    
+    def _safe_strip_text(value, strip_func):
+        stripped = strip_func(value)
+        return stripped if stripped.strip() else value
+
+    clean_body = raw_text
+    if remove_headers:
+        clean_body = _safe_strip_text(clean_body, strip_newsgroup_header)
+    if remove_quotes:
+        clean_body = _safe_strip_text(clean_body, strip_newsgroup_quoting)
+    if remove_footers:
+        clean_body = _safe_strip_text(clean_body, strip_newsgroup_footer)
+
+    if remove_numbers:
+        tokens_raw = re.findall(r'\b[a-zA-Z]{2,}\b', clean_body)
+    else:
+        tokens_raw = re.findall(r'\b[a-zA-Z0-9]{2,}\b', clean_body)
+
+    if lowercase:
+        tokens_lowercase = [t.lower() for t in tokens_raw]
+    else:
+        tokens_lowercase = tokens_raw
+
+    if remove_stopwords:
+        tokens_final = [t for t in tokens_lowercase if t not in ENGLISH_STOP_WORDS]
+    else:
+        tokens_final = tokens_lowercase
+        
+    word_counts_in_doc = Counter(tokens_final)
+    
+    x_coo = x_sample.tocoo()
+    feature_names = vectorizer.get_feature_names_out().tolist()
+    word_contributions = []
+    
+    negative_class = target_names[0]
+    positive_class = target_names[1]
+    
+    for col_idx, val in zip(x_coo.col, x_coo.data):
+        word = feature_names[col_idx]
+        tf_in_doc = word_counts_in_doc.get(word, 0)
+        
+        log_prob_neg = float(clf.feature_log_prob_[0, col_idx])
+        log_prob_pos = float(clf.feature_log_prob_[1, col_idx])
+        delta = log_prob_pos - log_prob_neg
+        abs_delta = abs(delta)
+        
+        contribs = {}
+        w_probs = {}
+        for class_idx, name in enumerate(target_names):
+            if model_type == "MultinomialNB":
+                contribs[name] = float(val * clf.feature_log_prob_[class_idx, col_idx])
+            else:
+                contribs[name] = float(-val * clf.feature_log_prob_[class_idx, col_idx])
+            w_probs[name] = float(np.exp(clf.feature_log_prob_[class_idx, col_idx]))
+            
+        contrib_item = {
+            "word": word,
+            "tf": int(tf_in_doc),
+            "feature_value": float(val),
+            "log_prob_negative": log_prob_neg,
+            "log_prob_positive": log_prob_pos,
+            "delta": delta,
+            "abs_delta": abs_delta,
+            "support_class": positive_class if delta >= 0.1 else (negative_class if delta <= -0.1 else "区分能力较弱"),
+            "contributions": contribs,
+            "probs": w_probs
+        }
+        word_contributions.append(contrib_item)
+        
+    # Sort contributions by the difference between predicted class and other
+    for item in word_contributions:
+        contribs = item["contributions"]
+        other_contribs = [contribs[n] for n in target_names if n != predicted_label]
+        max_other = max(other_contribs) if other_contribs else 0.0
+        item["diff"] = contribs[predicted_label] - max_other
+        
+    word_contributions.sort(key=lambda x: x["diff"], reverse=True)
+    
+    # Group by class
+    pos_list = []
+    neg_list = []
+    for item in word_contributions:
+        delta = item["delta"]
+        # Simplified representation for support_words_by_class
+        simplified = {
+            "word": item["word"],
+            "tf": item["tf"],
+            "feature_value": item["feature_value"],
+            "log_prob_negative": item["log_prob_negative"],
+            "log_prob_positive": item["log_prob_positive"],
+            "delta": delta,
+            "abs_delta": item["abs_delta"],
+            "support_class": item["support_class"]
+        }
+        if delta > 0:
+            pos_list.append(simplified)
+        elif delta < 0:
+            neg_list.append(simplified)
+        else:
+            neg_list.append(simplified)
+            
+    pos_list.sort(key=lambda x: x["abs_delta"], reverse=True)
+    neg_list.sort(key=lambda x: x["abs_delta"], reverse=True)
+    
+    support_words_by_class = {
+        positive_class: pos_list[:10],
+        negative_class: neg_list[:10]
+    }
+    
+    # Build highlighted_tokens
+    highlighted_tokens = []
+    participated_words = {feature_names[col_idx]: col_idx for col_idx in x_coo.col}
+    word_contrib_lookup = {w["word"]: w for w in word_contributions}
+    
+    for m in re.finditer(r'\b[a-zA-Z0-9]+\b', raw_text):
+        word = m.group()
+        norm = word.lower()
+        start = m.start()
+        end = m.end()
+        
+        if norm in participated_words:
+            contrib_info = word_contrib_lookup[norm]
+            highlighted_tokens.append({
+                "token": word,
+                "start": start,
+                "end": end,
+                "status": "valid",
+                "support_class": contrib_info["support_class"],
+                "delta": contrib_info["delta"],
+                "abs_delta": contrib_info["abs_delta"],
+                "log_prob_negative": contrib_info["log_prob_negative"],
+                "log_prob_positive": contrib_info["log_prob_positive"]
+            })
+        else:
+            if norm in ENGLISH_STOP_WORDS:
+                continue
+            if len(norm) < 2:
+                continue
+            if opts.get("remove_numbers", True) and not word.isalpha():
+                continue
+                
+            if norm in vectorizer.vocabulary_:
+                continue
+            else:
+                oov_reason, oov_msg = infer_oov_reason(word, norm, ds, vectorizer)
+                highlighted_tokens.append({
+                    "token": word,
+                    "start": start,
+                    "end": end,
+                    "status": "oov",
+                    "reason": oov_reason,
+                    "message": oov_msg
+                })
+                
+    return {
+        "predicted_label": predicted_label,
+        "posterior_probs": posterior_probs,
+        "raw_scores": raw_scores,
+        "prior_scores": prior_scores,
+        "likelihood_scores": likelihood_scores,
+        "word_contributions": word_contributions,
+        "support_words_by_class": support_words_by_class,
+        "highlighted_tokens": highlighted_tokens,
+        "oov_words": oov_words_list,
+        "valid_words": valid_words,
+        "filtered_words": filtered_words,
+        "true_label": true_label,
+        "clean_body": clean_body
     }
 
 
@@ -1233,9 +1724,9 @@ def predict(payload: dict) -> dict:
             text = _safe_strip_text(text, strip_newsgroup_footer)
 
         if opts.get("remove_numbers", True):
-            tokens = re.findall(r'\b[a-zA-Z]+\b', text)
+            tokens = re.findall(r'\b[a-zA-Z]{2,}\b', text)
         else:
-            tokens = re.findall(r'\b[a-zA-Z0-9]+\b', text)
+            tokens = re.findall(r'\b[a-zA-Z0-9]{2,}\b', text)
 
         if opts.get("lowercase", True):
             tokens = [t.lower() for t in tokens]
@@ -1248,11 +1739,6 @@ def predict(payload: dict) -> dict:
         raw_text = custom_text
         true_class = None
         idx_in_test = None
-        
-        # 计算 OOV 词汇
-        all_unique_tokens = list(set(tokens))
-        vocab = vectorizer.vocabulary_
-        oov_words = [t for t in all_unique_tokens if t not in vocab]
     else:
         if test_count == 0:
             raise ValueError("测试集为空，无法进行预测。")
@@ -1273,121 +1759,197 @@ def predict(payload: dict) -> dict:
         true_class = y_test[idx_in_test]
         
         x_sample = X_test[idx_in_test]
-        oov_words = []
-    
-    # 算法预测
-    pred_class = int(clf.predict(x_sample)[0])
-    
-    # 获取 joint log likelihood (scoring matrix)
-    if hasattr(clf, "_joint_log_likelihood"):
-        jll = clf._joint_log_likelihood(x_sample)[0]
-    else:
-        # 手动计算 fallback
-        if ds["model_type"] == "MultinomialNB":
-            jll = (x_sample * clf.feature_log_prob_.T).toarray()[0] + clf.class_log_prior_
-        else:
-            jll = -(x_sample * clf.feature_log_prob_.T).toarray()[0]
-            
-    # 计算 log likelihood 和 log prior
-    prior_scores = {}
-    likelihood_scores = {}
-    raw_scores = {}
-    
-    total_samples = float(np.sum(clf.class_count_))
-    
-    for class_idx, name in enumerate(target_names):
-        # 先验对数得分
-        log_prior = float(np.log(clf.class_count_[class_idx] / total_samples))
-        prior_scores[name] = log_prior
         
-        # 似然对数得分
-        if ds["model_type"] == "MultinomialNB":
-            log_like = float(x_sample.dot(clf.feature_log_prob_[class_idx])[0])
-        else:
-            log_like = float(-x_sample.dot(clf.feature_log_prob_[class_idx])[0])
-            
-        likelihood_scores[name] = log_like
-        raw_scores[name] = float(jll[class_idx])
-        
-    # 对数平移 + Softmax 归一化百分比
-    cleaned_scores = []
-    for name in target_names:
-        s = raw_scores[name]
-        if np.isnan(s) or np.isneginf(s):
-            cleaned_scores.append(-9999.0)
-        else:
-            cleaned_scores.append(s)
-            
-    max_score = max(cleaned_scores)
-    exp_scores = [np.exp(s - max_score) for s in cleaned_scores]
-    sum_exp = sum(exp_scores)
+    explanation = explain_sample(ds, x_sample, raw_text, true_class=true_class)
     
-    probs = {}
-    for class_idx, name in enumerate(target_names):
-        probs[name] = float(exp_scores[class_idx] / sum_exp) if sum_exp > 0 else 1.0 / len(target_names)
-        
-    # 计算词汇贡献度
-    x_coo = x_sample.tocoo()
-    feature_names = vectorizer.get_feature_names_out().tolist()
-    word_contributions = []
-    
-    for col_idx, val in zip(x_coo.col, x_coo.data):
-        word = feature_names[col_idx]
-        contribs = {}
-        w_probs = {}
-        for class_idx, name in enumerate(target_names):
-            if ds["model_type"] == "MultinomialNB":
-                contribs[name] = float(val * clf.feature_log_prob_[class_idx, col_idx])
-            else:
-                contribs[name] = float(-val * clf.feature_log_prob_[class_idx, col_idx])
-            w_probs[name] = float(np.exp(clf.feature_log_prob_[class_idx, col_idx]))
-        word_contributions.append({
-            "word": word,
-            "val": float(val),
-            "contributions": contribs,
-            "probs": w_probs
-        })
-        
-    # 排序词汇贡献度：看在预测类和非预测类之间的得分差异
-    pred_name = target_names[pred_class]
-    for item in word_contributions:
-        contribs = item["contributions"]
-        other_contribs = [contribs[n] for n in target_names if n != pred_name]
-        max_other = max(other_contribs) if other_contribs else 0.0
-        item["diff"] = contribs[pred_name] - max_other
-        
-    word_contributions.sort(key=lambda x: x["diff"], reverse=True)
-    top_words = word_contributions
-    
-    # 清理非 JSON 序列化对象
     top_words_clean = []
-    for w in top_words:
+    for w in explanation["word_contributions"]:
         top_words_clean.append({
             "word": w["word"],
-            "val": float(w["val"]),
+            "tf": int(w["tf"]),
+            "val": float(w["feature_value"]),
             "contributions": w["contributions"],
             "probs": w["probs"],
             "diff": float(w["diff"])
         })
         
-    clean_text = raw_text.replace("\n", " ").strip()
-    text_preview = clean_text[:250] + "..." if len(clean_text) > 250 else clean_text
+    body_text = explanation.get("clean_body", raw_text)
+    if not body_text.strip():
+        body_text = raw_text
+    clean_text = body_text.replace("\n", " ").strip()
+    text_preview = clean_text[:400] + "..." if len(clean_text) > 400 else clean_text
     
     return {
         "sample_index": idx_in_test,
         "total_samples": test_count,
         "text_preview": text_preview,
         "full_text": raw_text,
-        "true_label": target_names[true_class] if true_class is not None else None,
-        "predicted_label": target_names[pred_class],
-        "correct": bool(true_class == pred_class) if true_class is not None else None,
-        "raw_scores": raw_scores,
-        "probs": probs,
-        "prior_scores": prior_scores,
-        "likelihood_scores": likelihood_scores,
+        "true_label": explanation.get("true_label"),
+        "predicted_label": explanation["predicted_label"],
+        "correct": bool(explanation.get("true_label") == explanation["predicted_label"]) if explanation.get("true_label") is not None else None,
+        "raw_scores": explanation["raw_scores"],
+        "probs": explanation["posterior_probs"],
+        "prior_scores": explanation["prior_scores"],
+        "likelihood_scores": explanation["likelihood_scores"],
         "top_words": top_words_clean,
+        "support_words_by_class": explanation["support_words_by_class"],
+        "highlighted_tokens": explanation["highlighted_tokens"],
         "is_custom": is_custom,
-        "oov_words": oov_words
+        "oov_words": explanation["oov_words"],
+        "valid_words": explanation["valid_words"],
+        "filtered_words": explanation["filtered_words"]
+    }
+
+
+def predict_without_word(payload: dict) -> dict:
+    dataset_id = payload.get("dataset_id") or "twenty_newsgroups"
+    if dataset_id not in _LOADED_DATASETS:
+        raise ValueError("模型尚未训练，请先完成模型训练。")
+        
+    ds = _LOADED_DATASETS[dataset_id]
+    if "nb_model" not in ds:
+        raise ValueError("模型尚未训练，请先完成模型训练。")
+        
+    clf = ds["nb_model"]
+    vectorizer = ds["vectorizer"]
+    X_test = ds.get("X_test")
+    y_test = ds.get("y_test")
+    target_names = ds["target_names"]
+
+    custom_text = payload.get("text")
+    sample_index = payload.get("sample_index")
+    is_custom = custom_text is not None
+    
+    if is_custom:
+        raw_text = custom_text
+        true_class = None
+    else:
+        if sample_index is None:
+            raise ValueError("请先选择或输入一个文本样本。")
+        test_count = len(y_test) if y_test is not None else 0
+        if test_count == 0:
+            raise ValueError("测试集为空，无法进行预测。")
+        try:
+            idx_in_test = int(sample_index) % test_count
+        except ValueError:
+            raise ValueError("请先选择或输入一个文本样本。")
+            
+        raw_idx = ds["test_idx"][idx_in_test]
+        raw_text = ds["texts"][raw_idx]
+        true_class = y_test[idx_in_test]
+
+    removed_word = payload.get("removed_word", "").strip().lower()
+    if not removed_word:
+        raise ValueError("请选择需要移除的关键词。")
+
+    opts = ds.get("tokenization_options", {})
+    remove_headers = opts.get("remove_headers", True)
+    remove_quotes = opts.get("remove_quotes", True)
+    remove_footers = opts.get("remove_footers", True)
+    remove_numbers = opts.get("remove_numbers", True)
+    lowercase = opts.get("lowercase", True)
+    remove_stopwords = opts.get("remove_stopwords", True)
+    
+    import re
+    from sklearn.datasets._twenty_newsgroups import (
+        strip_newsgroup_header,
+        strip_newsgroup_footer,
+        strip_newsgroup_quoting
+    )
+    
+    def _safe_strip_text(value, strip_func):
+        stripped = strip_func(value)
+        return stripped if stripped.strip() else value
+
+    text = raw_text
+    if remove_headers:
+        text = _safe_strip_text(text, strip_newsgroup_header)
+    if remove_quotes:
+        text = _safe_strip_text(text, strip_newsgroup_quoting)
+    if remove_footers:
+        text = _safe_strip_text(text, strip_newsgroup_footer)
+
+    # 1. 检查移除词是否在当前文本中
+    words_in_text = re.findall(r'\b\w+\b', text)
+    words_in_text_lower = [w.lower() for w in words_in_text]
+    
+    if removed_word not in words_in_text_lower:
+        raise ValueError("当前文本中未找到该词，无法执行移除后重算。")
+
+    # 2. 检查是否在模型词表中
+    vocab = vectorizer.vocabulary_
+    if removed_word not in vocab:
+        raise ValueError("该词未进入模型词表，原本就未参与预测计算，移除后不会影响预测结果。")
+
+    # 提取分词列表
+    if remove_numbers:
+        tokens_raw = re.findall(r'\b[a-zA-Z]{2,}\b', text)
+    else:
+        tokens_raw = re.findall(r'\b[a-zA-Z0-9]{2,}\b', text)
+
+    if lowercase:
+        tokens_lowercase = [t.lower() for t in tokens_raw]
+    else:
+        tokens_lowercase = tokens_raw
+
+    if remove_stopwords:
+        tokens_final = [t for t in tokens_lowercase if t not in ENGLISH_STOP_WORDS]
+    else:
+        tokens_final = tokens_lowercase
+
+    # 计算移除词的数量
+    removed_count = tokens_final.count(removed_word)
+
+    # 3. 检查移除该词后是否仍有有效词
+    tokens_after = [t for t in tokens_final if t != removed_word]
+    valid_after = [t for t in tokens_after if t in vocab]
+    if not valid_after:
+        raise ValueError("移除该词后，当前文本没有有效词进入模型词表，模型无法基于文本内容形成稳定判断。")
+
+    # 原预测
+    clean_text_orig = " ".join(tokens_final)
+    x_orig = vectorizer.transform([clean_text_orig])[0]
+    orig_explain = explain_sample(ds, x_orig, raw_text, true_class=true_class)
+
+    # 移除后预测
+    clean_text_after = " ".join(tokens_after)
+    x_after = vectorizer.transform([clean_text_after])[0]
+    after_explain = explain_sample(ds, x_after, raw_text, true_class=true_class)
+
+    # 计算概率和对数得分变化
+    probability_change = {}
+    score_change = {}
+    for name in target_names:
+        probability_change[name] = float(after_explain["posterior_probs"][name] - orig_explain["posterior_probs"][name])
+        score_change[name] = float(after_explain["raw_scores"][name] - orig_explain["raw_scores"][name])
+
+    prediction_changed = bool(after_explain["predicted_label"] != orig_explain["predicted_label"])
+
+    if prediction_changed:
+        message = f"移除 {removed_word} 后，预测类别由 {orig_explain['predicted_label']} 变为 {after_explain['predicted_label']}。"
+    else:
+        message = f"移除 {removed_word} 后，预测类别仍为 {orig_explain['predicted_label']}。"
+
+    return {
+        "removed_word": removed_word,
+        "removed_count": removed_count,
+        "word_found": True,
+        "original": {
+            "predicted_label": orig_explain["predicted_label"],
+            "posterior_probs": orig_explain["posterior_probs"],
+            "raw_scores": orig_explain["raw_scores"],
+            "support_words_by_class": orig_explain["support_words_by_class"]
+        },
+        "after_removal": {
+            "predicted_label": after_explain["predicted_label"],
+            "posterior_probs": after_explain["posterior_probs"],
+            "raw_scores": after_explain["raw_scores"],
+            "support_words_by_class": after_explain["support_words_by_class"]
+        },
+        "probability_change": probability_change,
+        "score_change": score_change,
+        "prediction_changed": prediction_changed,
+        "message": message
     }
 
 
@@ -1402,4 +1964,5 @@ JSON_ACTIONS = {
     "train_prepare": prepare_train,
     "get_word_prob": get_word_prob,
     "predict": predict,
+    "predict_without_word": predict_without_word,
 }

@@ -250,6 +250,9 @@ function renderPreprocessLoadPanel() {
 
       <div class="control-group">
         <label class="control-label" style="font-weight:600;margin-bottom:8px;display:block;">选择分类版块 (可多选)</label>
+        <p style="margin: 4px 0 12px 0; font-size: 12px; color: #666; line-height: 1.5;">
+          当前实验采用二分类设置，便于观察两个类别之间的先验概率、条件概率、判别特征和分类边界。
+        </p>
         <div class="category-checkboxes" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;" id="datasetCategoriesWrap">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
             <input type="checkbox" name="nbCategory" value="sci.space" ${categories.includes("sci.space") ? "checked" : ""}>
@@ -592,6 +595,12 @@ function bindDatasetLoader() {
   // 绑定分类多选框的变动（给引导用）
   document.querySelectorAll('input[name="nbCategory"]').forEach(el => {
     el.addEventListener("change", () => {
+      const checked = document.querySelectorAll('input[name="nbCategory"]:checked');
+      if (checked.length > 2) {
+        alert("当前实验为二分类朴素贝叶斯演示，请保留两个类别参与训练。");
+        el.checked = false;
+        return;
+      }
       if (activePreprocessStep === "load" && guideEnabledForPreprocessLoad()) {
         setGuidePageState({ step: "load_dataset" });
         updatePreprocessLoadGuide();
@@ -767,8 +776,15 @@ async function loadSelectedDataset() {
   document.querySelectorAll('input[name="nbCategory"]:checked').forEach(el => {
     categories.push(el.value);
   });
-  if (categories.length < 2) {
-    datasetMessage("请至少选择 2 个分类版块！", true);
+  if (categories.length === 2) {
+    // Ok
+  } else if (categories.length < 2) {
+    alert("请至少选择两个类别。");
+    datasetMessage("请至少选择两个类别。", true);
+    return;
+  } else {
+    alert("当前实验仅支持两个类别，请保留两个类别。");
+    datasetMessage("当前实验仅支持两个类别，请保留两个类别。", true);
     return;
   }
   const maxSamples = $("datasetMaxSamples")?.value || "500";
@@ -811,7 +827,12 @@ async function loadSelectedDataset() {
       updatePreprocessLoadGuide();
     }
   } catch (err) {
-    datasetMessage(err.message, true);
+    const message = String(err?.message || "");
+    if (message.includes("20 Newsgroups") || message.includes("sklearn 数据缓存")) {
+      datasetMessage(`真实 20 Newsgroups 数据集加载失败，本实验仅使用真实数据，不使用模拟样本。${message.includes("未找到本地") ? "未找到本地 20 Newsgroups 数据集缓存，需要先联网下载或预置 sklearn 数据缓存。" : ""}`, true);
+    } else {
+      datasetMessage(message || "数据集加载失败。", true);
+    }
     updatePreprocessLoadGuide();
   } finally {
     if (btn) {
@@ -2801,6 +2822,41 @@ function closePreprocessCodeDrawer() {
   document.querySelector(".code-drawer-backdrop")?.remove();
 }
 
+function DELETED_preprocessTokenizeDashboardHtml() {
+  const cache = tokenizeCache || {};
+  const metrics = [
+    { label: "清洗后词表规模", value: cache.cleaned_vocab_size ?? "--" },
+    { label: "词汇总体过滤率 (降维率)", value: `${cache.compression_ratio ?? 0}%` },
+    { label: "过滤前均值词数/篇", value: cache.avg_raw_words ?? "--" },
+    { label: "过滤后均值词数/篇", value: cache.avg_cleaned_words ?? "--" }
+  ];
+
+  return `
+    <section class="preprocess-dashboard-card preprocess-info-card preprocess-loaded-card">
+      <div class="chart-head">
+        <div>
+          <div class="chart-title" style="color: #333;">02 分词与数据清洗效果可视化</div>
+          <div class="chart-sub">观察去噪与停用词对词汇规模的影响，查看词频分布及清洗对照表。</div>
+        </div>
+      </div>
+      <div class="info-card-body preprocess-step-body" style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: grid; grid-template-columns: 1.25fr 1.75fr; gap: 16px; align-items: start;">
+          <div style="background: #f8f9fa; border-radius: 6px; padding: 12px; border: 1px solid #e9ecef; min-height: 180px;">
+            <h4 style="margin: 0 0 10px 0; font-size: 13px; font-weight: 600; color: #495057;">清洗前后对比指标</h4>
+            <div class="preprocess-metrics" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+              ${metrics.map(m => `
+                <div class="preprocess-metric" style="background: #fff; padding: 6px 10px; border-radius: 4px; border: 1px solid #dee2e6; text-align:center;">
+                  <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 2px;">${escapeHtml(m.label)}</span>
+                  <strong style="font-size: 15px; color: #212529;">${m.value}</strong>
+                </div>
+              `).join("")}
+            </div>
+            <p style="margin: 12px 0 0 0; font-size: 11px; color: #868e96; line-height: 1.4;">
+              💡 清洗后词表表示文本经过分词和清洗后保留下来的全部词。它反映预处理后的原始词集合。
+            </p>
+          </div>`;
+}
+
 function bindPreprocessCodeButtons() {
   if (window.preprocessCodeButtonsBound) return;
   window.preprocessCodeButtonsBound = true;
@@ -3034,7 +3090,7 @@ function renderTokenizeOverview() {
 function preprocessTokenizeDashboardHtml() {
   const cache = tokenizeCache || {};
   const metrics = [
-    { label: "词表特征数 (Vocab Size)", value: cache.vocab_size ?? "--" },
+    { label: "清洗后词表规模", value: cache.cleaned_vocab_size ?? "--" },
     { label: "词汇总体过滤率 (降维率)", value: `${cache.compression_ratio ?? 0}%` },
     { label: "过滤前均值词数/篇", value: cache.avg_raw_words ?? "--" },
     { label: "过滤后均值词数/篇", value: cache.avg_cleaned_words ?? "--" }
@@ -3061,7 +3117,7 @@ function preprocessTokenizeDashboardHtml() {
               `).join("")}
             </div>
             <p style="margin: 12px 0 0 0; font-size: 11px; color: #868e96; line-height: 1.4;">
-              💡 剔除停用词与数字特殊符号，结合统一小写，不仅能使模型的特征表示空间（词表维度）显著缩减以加快计算，更能降低朴素贝叶斯的参数方差，防止过拟合。
+              💡 清洗后词表表示文本经过分词和清洗后保留下来的全部词。它反映预处理后的原始词集合。
             </p>
           </div>
           <div style="background: #fff; border-radius: 6px; padding: 10px; border: 1px solid #e9ecef;">
@@ -3798,14 +3854,64 @@ function preprocessVectorizeDashboardHtml() {
             </div>
           </div>
         </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; min-height: 280px;">
-          <div style="background: #fff; border-radius: 6px; padding: 10px; border: 1px solid #e9ecef; display: flex; flex-direction: column;">
+
+        <!-- 词表筛选结果卡片 -->
+        <div style="background: #fff; border-radius: 6px; padding: 16px; border: 1px solid #e9ecef; margin-bottom: 16px; margin-top: 16px;">
+          <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #333;">📊 词表筛选结果</h4>
+          <p style="margin: 0 0 12px 0; font-size: 12px; color: #666; line-height: 1.5;">
+            部分清洗后的词会因为出现频率过低、出现频率过高或超过特征数量上限而未进入模型词表。
+          </p>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr) 1.5fr 1.5fr; gap: 16px; align-items: start;">
+            <!-- 清洗后词表 -->
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; text-align: center;">
+              <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 4px;">清洗后词表规模</span>
+              <strong style="font-size: 20px; color: #228be6;">${cache.cleaned_vocab_size ?? "--"}</strong>
+              <div style="font-size: 10px; color: #adb5bd; margin-top: 4px;">分词与清洗后的全部词集合</div>
+            </div>
+            <!-- 模型词表 -->
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; text-align: center;">
+              <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 4px;">模型词表规模</span>
+              <strong style="font-size: 20px; color: #40c057;">${cache.model_vocab_size ?? "--"}</strong>
+              <div style="font-size: 10px; color: #adb5bd; margin-top: 4px;">进入模型特征矩阵的词集合</div>
+            </div>
+            <!-- 被过滤词数 -->
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; text-align: center;">
+              <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 4px;">被向量化器过滤的词数</span>
+              <strong style="font-size: 20px; color: #fa5252;">${cache.cleaned_vocab_size !== undefined && cache.model_vocab_size !== undefined ? (cache.cleaned_vocab_size - cache.model_vocab_size) : "--"}</strong>
+              <div style="font-size: 10px; color: #adb5bd; margin-top: 4px;">因不符特征规则被筛除的词数</div>
+            </div>
+            <!-- 当前向量化参数 -->
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; min-height: 80px;">
+              <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 6px; font-weight: 600;">当前特征过滤参数</span>
+              <div style="font-size: 11px; color: #495057; display: flex; flex-direction: column; gap: 4px;">
+                <div>• 向量化器类型: <code style="background: #fff; padding: 1px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${cache.vectorizer_params?.vectorizer_type === 'tfidf' ? 'TF-IDF' : 'Count (词频)'}</code></div>
+                <div>• 特征数量上限: <code style="background: #fff; padding: 1px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${cache.vectorizer_params?.max_features ?? '无限制'}</code></div>
+                <div>• 最小文档频数 (min_df): <code style="background: #fff; padding: 1px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${cache.vectorizer_params?.min_df ?? 2}</code></div>
+                <div>• 最大文档频率比 (max_df): <code style="background: #fff; padding: 1px 4px; border-radius: 3px; border: 1px solid #dee2e6;">${cache.vectorizer_params?.max_df ?? 1.0}</code></div>
+                <div>• N-Gram 区间: <code style="background: #fff; padding: 1px 4px; border-radius: 3px; border: 1px solid #dee2e6;">[${cache.vectorizer_params?.ngram_range?.join(', ') ?? '1, 1'}]</code></div>
+              </div>
+            </div>
+            <!-- Top 模型特征词 -->
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e9ecef; min-height: 80px;">
+              <span style="font-size: 11px; color: #868e96; display: block; margin-bottom: 6px; font-weight: 600;">Top 模型特征词</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 70px; overflow-y: auto;">
+                ${cache.top_15_features ? cache.top_15_features.slice(0, 10).map(f => `
+                  <span class="badge" style="background: #e8f4fd; color: #1e88e5; border: 1px solid #c2e2fa; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-family: monospace;" title="权重/频次: ${f.value}">
+                    ${escapeHtml(f.word)}
+                  </span>
+                `).join("") : `<span style="font-size: 11px; color: #adb5bd;">暂无特征词</span>`}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="vectorize-analysis-grid" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 16px; align-items: start;">
+          <div class="vectorize-chart-panel" style="background: #fff; border-radius: 6px; padding: 10px; border: 1px solid #e9ecef; display: flex; flex-direction: column; min-height: 340px;">
             <h4 style="margin: 0 0 6px 0; font-size: 13px; font-weight: 600; color: #495057; flex: 0 0 auto;">${escapeHtml(chartTitle)}</h4>
-            <div id="nbVectorizeWordsChart" style="width: 100%; flex: 1 1 auto; min-height: 260px;"></div>
+            <div id="nbVectorizeWordsChart" style="width: 100%; flex: 1 1 auto; min-height: 300px;"></div>
           </div>
           <!-- 特征权重数学解剖探针 -->
-          <div id="vectorizeMathProbeWrap" class="math-formula-box">
+          <div id="vectorizeMathProbeWrap" class="math-formula-box vectorize-math-probe">
             <div class="math-formula-title">
               <div class="math-formula-kicker">特征权重数学解剖</div>
               <div class="math-formula-meta">
@@ -3816,10 +3922,10 @@ function preprocessVectorizeDashboardHtml() {
           </div>
         </div>
         
-        <div>
+        <div class="vectorize-preview-section">
           <h4 style="margin: 0 0 8px 0; font-size: 13px; font-weight: 600; color: #495057;">样本特征稀疏权重向量预览 (展示前 10 条，点击气泡可解剖权重算式)</h4>
-          <div class="table-wrap" style="overflow-x: auto; border: 1px solid #dee2e6; border-radius: 4px;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+          <div class="table-wrap vectorize-preview-table-wrap" style="overflow-x: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+            <table class="vectorize-preview-table" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
               <thead>
                 <tr style="background: #f1f3f5; border-bottom: 1px solid #dee2e6;">
                   <th style="padding: 8px; font-weight: 600; color: #495057; width: 40px;">序号</th>
@@ -4156,6 +4262,40 @@ function injectMathFormulaStyles() {
       color: #0f172a;
       font-family: Inter, "Microsoft YaHei", sans-serif;
     }
+    .vectorize-analysis-grid {
+      overflow: visible;
+    }
+    .vectorize-math-probe {
+      box-sizing: border-box;
+      max-height: 340px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      align-self: start;
+      scrollbar-width: thin;
+    }
+    .vectorize-math-probe::-webkit-scrollbar {
+      width: 7px;
+    }
+    .vectorize-math-probe::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 99px;
+    }
+    .vectorize-preview-section {
+      position: relative;
+      z-index: 0;
+      clear: both;
+    }
+    .vectorize-preview-table-wrap {
+      max-width: 100%;
+      background: #fff;
+    }
+    .vectorize-preview-table {
+      min-width: 920px;
+    }
     .math-formula-title {
       display: flex;
       align-items: flex-start;
@@ -4215,6 +4355,8 @@ function injectMathFormulaStyles() {
       border-radius: 6px;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
     .formula-katex-display .katex-display {
       margin: 0;
@@ -4274,7 +4416,7 @@ function injectMathFormulaStyles() {
       display: flex;
       align-items: flex-start;
       gap: 8px;
-      padding: 6px 10px;
+      padding: 5px 8px;
       border-bottom: 1px solid #f1f5f9;
       background: #fff;
       transition: background .12s ease;
@@ -4316,15 +4458,15 @@ function injectMathFormulaStyles() {
       margin-bottom: 1px;
     }
     .math-step-body {
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 12px;
+      line-height: 1.45;
       color: #475569;
     }
     .math-step-body strong {
       color: #1d4ed8;
     }
     .math-step-body .katex {
-      font-size: 1.2em;
+      font-size: 1.05em;
     }
     .math-footer-note {
       margin-top: 6px;
@@ -4335,6 +4477,10 @@ function injectMathFormulaStyles() {
       color: #78350f;
       font-size: 12px;
       line-height: 1.5;
+    }
+    .vectorize-math-probe .math-footer-note {
+      font-size: 11.5px;
+      line-height: 1.4;
     }
     .math-footer-note strong {
       color: #b45309;
@@ -4359,6 +4505,17 @@ function injectMathFormulaStyles() {
       border-radius: 3px;
       font-family: monospace;
       font-size: 13px;
+    }
+    @media (max-width: 980px) {
+      .vectorize-analysis-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .vectorize-math-probe {
+        max-height: 360px;
+      }
+      .vectorize-preview-table {
+        min-width: 820px;
+      }
     }
     @keyframes spin {
       0% { transform: rotate(0deg); }
@@ -4691,11 +4848,11 @@ function buildVectorizeMathProbeModernHtml(meta, sampleId, category) {
   const stepCards = isTfidf ? [
     {
       title: "先看词频 TF",
-      body: `单词在当前文档里出现了 <strong>${meta.tf_in_doc}</strong> 次，总词数是 <strong>${meta.doc_word_count}</strong>。对应公式是 ${renderPreprocessLatexToHtml(`\\text{TF} = \\frac{${meta.tf_in_doc}}{${meta.doc_word_count}} \\approx ${tfValue}`, false)}。`,
+      body: `当前文档出现 <strong>${meta.tf_in_doc}</strong> 次，总词数 <strong>${meta.doc_word_count}</strong>：${renderPreprocessLatexToHtml(`\\text{TF} = \\frac{${meta.tf_in_doc}}{${meta.doc_word_count}} \\approx ${tfValue}`, false)}`,
     },
     {
       title: "再看逆文档频率 IDF",
-      body: `该词在全局 <strong>500</strong> 篇邮件中出现于 <strong>${meta.df_global}</strong> 篇。对应公式是 ${renderPreprocessLatexToHtml(`\\text{IDF} = \\ln\\left(\\frac{501}{${meta.df_global + 1}}\\right) + 1 \\approx ${meta.idf.toFixed(4)}`, false)}。`,
+      body: `全局 <strong>500</strong> 篇中出现于 <strong>${meta.df_global}</strong> 篇：${renderPreprocessLatexToHtml(`\\text{IDF} = \\ln\\left(\\frac{501}{${meta.df_global + 1}}\\right) + 1 \\approx ${meta.idf.toFixed(4)}`, false)}`,
     },
     {
       title: "把两者相乘",
@@ -4703,7 +4860,7 @@ function buildVectorizeMathProbeModernHtml(meta, sampleId, category) {
     },
     {
       title: "最后做 L2 归一化",
-      body: `模型会把整行向量缩放到统一长度，所以真正落到稀疏矩阵里的值是 <strong>${meta.weight.toFixed(4)}</strong>。`,
+      body: `整行向量统一缩放后，稀疏矩阵中的最终值是 <strong>${meta.weight.toFixed(4)}</strong>。`,
     },
   ] : [
     {
